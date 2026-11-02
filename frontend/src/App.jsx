@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import {
-  ArrowLeft, ArrowRight, Atom, Award, BookOpen, Check, CheckCircle2, ChevronDown, ChevronRight,
+  ArrowLeft, ArrowRight, Atom, Award, BookOpen, Check, CheckCircle2, ChevronDown, ChevronRight, Eye, EyeOff,
   CircleHelp, Clock3, Compass, Download, FlaskConical, GraduationCap, Leaf, LockKeyhole, LogOut, Menu,
   MessageCircle, Phone, Play, Plus, RotateCcw, Search, Sparkles, Target, Trash2, X,
 } from 'lucide-react'
@@ -45,6 +45,7 @@ function AuthScreen({ language, onLanguage, onSession }) {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const copy = (key) => t(language, key)
 
   async function submit(event) {
@@ -102,7 +103,7 @@ function AuthScreen({ language, onLanguage, onSession }) {
           <form onSubmit={submit} className="auth-form">
             {mode === 'register' && <label className="field-label">{copy('name')}<input autoComplete="name" required maxLength={100} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>}
             <label className="field-label">{copy('email')}<input type="email" autoComplete="email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label>
-            {mode !== 'reset' && <label className="field-label">{copy('password')}<input type="password" autoComplete={mode === 'register' ? 'new-password' : 'current-password'} minLength={8} required value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label>}
+            {mode !== 'reset' && <label className="field-label">{copy('password')}<span className="password-input-wrap"><input type={showPassword ? 'text' : 'password'} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} minLength={8} required value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /><button className="password-visibility" type="button" aria-label={copy(showPassword ? 'hidePassword' : 'showPassword')} aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></span></label>}
             {error && <div className="notice notice-error" role="alert">{error}</div>}
             {message && <div className="notice notice-success" role="status">{message}</div>}
             <button type="submit" className="button button-primary button-wide" disabled={busy}>{busy ? '…' : mode === 'login' ? copy('login') : mode === 'register' ? copy('register') : copy('reset')}<ArrowRight size={16} /></button>
