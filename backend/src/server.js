@@ -487,7 +487,7 @@ app.post('/api/exams/:examId/submit', async (req, res) => {
     return {
       questionId: question.id,
       topicId: question.topic_id,
-      topicTitle: question.topics?.title,
+      topicTitle: localized(question.topics?.title, language),
       prompt: localized(question.prompt, language),
       selected,
       correctAnswer: question.answer,

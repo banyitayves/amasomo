@@ -104,7 +104,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .setup-card code { color: #35684a; }
 
 .app-shell { min-height: 100vh; background: #f5f7f2; }
-.sidebar { position: fixed; z-index: 30; inset: 0 auto 0 0; display: flex; width: 247px; flex-direction: column; padding: 23px 16px 16px; background: linear-gradient(165deg, #173f34 0%, #1c493b 61%, #204a3b 100%); color: #fff; box-shadow: 5px 0 24px rgb(24 61 46 / 7%); }
+.sidebar { position: fixed; z-index: 30; inset: 0 auto 0 0; display: flex; width: 247px; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: rgb(235 245 235 / 28%) transparent; scrollbar-width: thin; padding: 23px 16px 16px; background: linear-gradient(165deg, #173f34 0%, #1c493b 61%, #204a3b 100%); color: #fff; box-shadow: 5px 0 24px rgb(24 61 46 / 7%); }
 .sidebar-brand { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 25px; }
 .sidebar-brand .brand-logo { width: 82px; height: 55px; }
 .sidebar-caption { padding: 0 10px; color: rgb(228 241 227 / 40%); font-size: 8px; font-weight: 800; letter-spacing: 1.5px; }
