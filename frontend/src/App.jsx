@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, Atom, Award, BookOpen, Check, CheckCircle2, ChevronDown, ChevronRight,
-  CircleHelp, Clock3, Compass, FlaskConical, GraduationCap, Leaf, LockKeyhole, LogOut, Menu,
+  CircleHelp, Clock3, Compass, Download, FlaskConical, GraduationCap, Leaf, LockKeyhole, LogOut, Menu,
   Play, Plus, RotateCcw, Sparkles, Target, Trash2, X,
 } from 'lucide-react'
 import { api, configured, supabase } from './api.js'
 import { languages, t, text } from './i18n.js'
+import { AdminResourcesPage, ResourcesPage } from './ResourceLibrary.jsx'
 
 const iconMap = { calculator: Target, leaf: Leaf, atom: Atom, flask: FlaskConical, book: BookOpen }
-const sections = ['home', 'subjects', 'practice', 'exams', 'progress']
+const sections = ['home', 'subjects', 'practice', 'exams', 'resources', 'progress']
 
 function IconFor({ name, className = 'h-5 w-5' }) {
   const Icon = iconMap[name] || BookOpen
@@ -332,7 +333,7 @@ function App() {
         <div className="sidebar-caption">{copy('spaceTagline')}</div>
         <nav className="sidebar-nav" aria-label={copy('mainNavigation')}>
           {nav.map((item) => {
-            const Icon = item === 'home' ? Sparkles : item === 'subjects' ? GraduationCap : item === 'practice' ? CircleHelp : item === 'exams' ? Clock3 : item === 'progress' ? Award : item === 'admin' ? Plus : BookOpen
+            const Icon = item === 'home' ? Sparkles : item === 'subjects' ? GraduationCap : item === 'practice' ? CircleHelp : item === 'exams' ? Clock3 : item === 'resources' ? Download : item === 'progress' ? Award : item === 'admin' ? Plus : BookOpen
             return <button key={item} className={`nav-link ${section === item ? 'nav-active' : ''}`} onClick={() => navigate(item)}><Icon size={17} /><span>{copy(item)}</span>{section === item && <span className="nav-indicator" />}</button>
           })}
         </nav>
@@ -357,9 +358,10 @@ function App() {
           {section === 'exams' && <ExamsPage exams={exams} language={language} onStart={startExam} />}
           {section === 'exam' && exam && !examResult && <ExamPage exam={exam} answers={examAnswers} setAnswers={setExamAnswers} index={examIndex} setIndex={setExamIndex} secondsLeft={secondsLeft} onSubmit={submitExam} submitting={examSubmitting} language={language} />}
           {section === 'exam' && examResult && <ExamResult result={examResult} language={language} onAgain={() => { setExam(null); navigate('exams') }} />}
+          {section === 'resources' && <ResourcesPage token={token} language={language} subjects={subjects} />}
           {section === 'progress' && <ProgressPage progress={progress} subjects={subjects} language={language} />}
           {section === 'admin' && isAdmin && <AdminPage subjects={subjects} exams={exams} token={token} language={language} onChanged={() => { loadOverview(token); setToast(copy('contentSaved')) }} />}
-          {!['home', 'subjects', 'lesson', 'practice', 'exams', 'exam', 'progress', 'admin'].includes(section) && <HomePage subjects={subjects} progress={progress} language={language} onOpenSubject={(subject) => { setActiveTopic(subject.topics?.[0] || null); navigate('subjects') }} onNavigate={navigate} />}
+          {!['home', 'subjects', 'lesson', 'practice', 'exams', 'exam', 'resources', 'progress', 'admin'].includes(section) && <HomePage subjects={subjects} progress={progress} language={language} onOpenSubject={(subject) => { setActiveTopic(subject.topics?.[0] || null); navigate('subjects') }} onNavigate={navigate} />}
           <footer className="page-footer"><span>© {new Date().getFullYear()} {copy('footer')}</span><span>{copy('welcome')}</span></footer>
         </div>
       </main>
