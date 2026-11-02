@@ -27,6 +27,14 @@ function BrandLogo({ className = '' }) {
   return <img className={`brand-logo ${className}`} src="/amasomo-logo.jpg" alt="Amasomo Meza" width="1152" height="768" />
 }
 
+function ContentLanguageSelect({ language, onChange, uiLanguage }) {
+  return <label className="content-language-select"><span>{t(uiLanguage, 'contentLanguage')}</span>
+    <select value={language} onChange={(event) => onChange(event.target.value)}>
+      {languages.map(({ code, label }) => <option value={code} key={code}>{label}</option>)}
+    </select>
+  </label>
+}
+
 function LanguageSelect({ language, onChange, compact = false }) {
   return (
     <label className={`language-select ${compact ? 'language-compact' : ''}`} aria-label={t(language, 'language')}>
@@ -619,6 +627,7 @@ function ProgressPage({ progress, subjects, language }) {
 
 function AdminPage({ subjects, exams, token, language, onChanged }) {
   const copy = (key) => t(language, key)
+  const [entryLanguage, setEntryLanguage] = useState(language)
   const [kind, setKind] = useState('support')
   const [pendingRequestCount, setPendingRequestCount] = useState(0)
   const [resourceUploadCategory, setResourceUploadCategory] = useState('notes')
@@ -787,6 +796,10 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
 
   return <>
     <PageHeading eyebrow={copy('teachingToolkit')} title={copy('adminTitle')} description={copy('learnSmall')} />
+    {kind !== 'support' && <div className="content-language-settings">
+      <ContentLanguageSelect language={entryLanguage} onChange={setEntryLanguage} uiLanguage={language} />
+      <p>{copy('contentLanguageHint')}</p>
+    </div>}
     <div className="admin-tabs">
       <button className={kind === 'lesson' ? 'selected' : ''} onClick={() => { setKind('lesson'); setEditing(null) }}><BookOpen size={16} />{copy('lessons')} ({lessons.length})</button>
       <button className={kind === 'question' ? 'selected' : ''} onClick={() => { setKind('question'); setEditing(null) }}><CircleHelp size={16} />{copy('practice')} ({questions.length})</button>
@@ -794,7 +807,7 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
       <button className={kind === 'resources' ? 'selected' : ''} onClick={() => { setKind('resources'); setEditing(null); setResourceUploadCategory('notes') }}><Download size={16} />{copy('resources')}</button>
       <button className={kind === 'support' ? 'selected' : ''} aria-label={`${copy('supportInbox')}: ${pendingRequestCount} ${copy('pending')}`} onClick={() => { setKind('support'); setEditing(null) }}><MessageCircle size={16} />{copy('supportInbox')}<span className="admin-tab-count">{pendingRequestCount}</span></button>
     </div>
-    {kind === 'resources' ? <><div className="exam-admin-guidance"><p>{copy('resourceWorkflow')}</p></div><AdminResourcesPage token={token} language={language} subjects={subjects} onChanged={onChanged} initialCategory={resourceUploadCategory} /></> : kind === 'support' ? <AdminSupportRequests token={token} language={language} onPendingCount={setPendingRequestCount} /> : kind === 'exams' ? <>
+    {kind === 'resources' ? <><div className="exam-admin-guidance"><p>{copy('resourceWorkflow')}</p></div><AdminResourcesPage token={token} language={language} entryLanguage={entryLanguage} subjects={subjects} onChanged={onChanged} initialCategory={resourceUploadCategory} /></> : kind === 'support' ? <AdminSupportRequests token={token} language={language} onPendingCount={setPendingRequestCount} /> : kind === 'exams' ? <>
       {error && <div className="notice notice-error" role="alert">{error}</div>}
       <div className="exam-admin-guidance"><div className="exam-admin-guidance-heading"><b>{copy('examWorkflowTitle')}</b><button className="button button-outline button-small" onClick={() => { setResourceUploadCategory('exams'); setKind('resources') }}><Upload size={14} />{copy('uploadExamPaper')}</button></div><p>{copy('examWorkflow')}</p></div>
       <div className="admin-layout">
@@ -815,8 +828,8 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
           <div className="panel-heading"><div><span className="section-kicker">{copy('languageEyebrow')}</span><h2>{editingExam ? copy('editExam') : copy('addExam')}</h2></div>{editingExam && <button className="icon-quiet" onClick={startNewExam} aria-label={copy('cancel')}><X size={17} /></button>}</div>
           <form className="admin-form" onSubmit={saveExam}>
             <label className="field-label">{copy('selectSubject')}<select required value={examForm.subject_id} onChange={(event) => setExamForm({ ...examForm, subject_id: event.target.value })}><option value="" disabled>{copy('selectSubject')}</option>{subjects.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}</select></label>
-            <TranslationFields label={copy('examTitle')} field="title" value={examForm.title} onChange={(field, locale, value) => setExamForm((current) => ({ ...current, [field]: { ...current[field], [locale]: value } }))} />
-            <TranslationFields label={copy('examDescription')} field="description" value={examForm.description} onChange={(field, locale, value) => setExamForm((current) => ({ ...current, [field]: { ...current[field], [locale]: value } }))} multiline />
+            <TranslationFields label={copy('examTitle')} field="title" value={examForm.title} language={entryLanguage} onChange={(field, locale, value) => setExamForm((current) => ({ ...current, [field]: { ...current[field], [locale]: value } }))} />
+            <TranslationFields label={copy('examDescription')} field="description" value={examForm.description} language={entryLanguage} onChange={(field, locale, value) => setExamForm((current) => ({ ...current, [field]: { ...current[field], [locale]: value } }))} multiline />
             <label className="field-label">{copy('examDuration')}<input type="number" min="1" max="240" required value={examForm.duration_minutes} onChange={(event) => setExamForm({ ...examForm, duration_minutes: event.target.value })} /></label>
             {editingExam && <label className="exam-publish-toggle"><input type="checkbox" checked={examForm.published} onChange={(event) => setExamForm({ ...examForm, published: event.target.checked })} />{copy('publishExam')}</label>}
             {!editingExam && <p className="resource-hint">{copy('newExamDraftHint')}</p>}
@@ -838,15 +851,15 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
           <form className="admin-form" onSubmit={save}>
             <label className="field-label">{copy('selectTopic')}<select required value={form.topic_id || ''} onChange={(event) => setForm({ ...form, topic_id: event.target.value })}><option value="" disabled>{copy('selectTopic')}</option>{topics.map((topic) => <option key={topic.id} value={topic.id}>{topic.subjectName} · {topic.title}</option>)}</select></label>
             {kind === 'lesson' ? <>
-              <TranslationFields label={copy('lessonTitle')} field="title" value={form.title} onChange={changeTranslation} />
-              <TranslationFields label={copy('shortSummary')} field="summary" value={form.summary} onChange={changeTranslation} />
-              <TranslationFields label={copy('lessonNotes')} field="content" value={form.content} onChange={changeTranslation} multiline />
+              <TranslationFields label={copy('lessonTitle')} field="title" value={form.title} language={entryLanguage} onChange={changeTranslation} />
+              <TranslationFields label={copy('shortSummary')} field="summary" value={form.summary} language={entryLanguage} onChange={changeTranslation} />
+              <TranslationFields label={copy('lessonNotes')} field="content" value={form.content} language={entryLanguage} onChange={changeTranslation} multiline />
               <label className="field-label">{copy('mediaLink')}<input type="url" value={form.media_url || ''} onChange={(event) => setForm({ ...form, media_url: event.target.value })} placeholder="https://" /></label>
             </> : <>
-              <TranslationFields label={copy('questionPrompt')} field="prompt" value={form.prompt} onChange={changeTranslation} />
-              {['A', 'B', 'C', 'D'].map((option) => <TranslationFields key={option} label={`${copy('choice')} ${option}`} field="options" option={option} value={form.options?.[option] || emptyTranslations()} onChange={changeTranslation} />)}
+              <TranslationFields label={copy('questionPrompt')} field="prompt" value={form.prompt} language={entryLanguage} onChange={changeTranslation} />
+              {['A', 'B', 'C', 'D'].map((option) => <TranslationFields key={option} label={`${copy('choice')} ${option}`} field="options" option={option} value={form.options?.[option] || emptyTranslations()} language={entryLanguage} onChange={changeTranslation} />)}
               <label className="field-label">{copy('correctAnswer')}<select value={form.answer || 'A'} onChange={(event) => setForm({ ...form, answer: event.target.value })}>{['A', 'B', 'C', 'D'].map((answer) => <option key={answer}>{answer}</option>)}</select></label>
-              <TranslationFields label={copy('explanation')} field="explanation" value={form.explanation} onChange={changeTranslation} multiline />
+              <TranslationFields label={copy('explanation')} field="explanation" value={form.explanation} language={entryLanguage} onChange={changeTranslation} multiline />
               <label className="field-label">{copy('questionType')}<select value={form.question_type || 'exercise'} onChange={(event) => setForm({ ...form, question_type: event.target.value })}><option value="exercise">{copy('practice')}</option><option value="exam">{copy('exams')}</option></select></label>
               {form.question_type === 'exam' && <label className="field-label">{copy('exams')}<select required value={form.exam_id || ''} onChange={(event) => setForm({ ...form, exam_id: event.target.value })}><option value="" disabled>{copy('selectExam')}</option>{managedExams.map((item) => <option value={item.id} key={item.id}>{text(item.title, language)}{!item.published ? ` · ${copy('draft')}` : ''}</option>)}</select></label>}
             </>}
@@ -858,8 +871,9 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
   </>
 }
 
-function TranslationFields({ label, field, option, value, onChange, multiline = false }) {
-  return <fieldset className="translation-group"><legend>{label}</legend><div className="translation-fields">{languages.map(({ code, short }) => <label className="translation-label" key={code}><span>{short}</span>{multiline ? <textarea required value={value?.[code] || ''} rows={code === 'en' ? 3 : 2} onChange={(event) => onChange(field, code, event.target.value, option)} /> : <input required value={value?.[code] || ''} onChange={(event) => onChange(field, code, event.target.value, option)} />}</label>)}</div></fieldset>
+function TranslationFields({ label, field, option, value, language, onChange, multiline = false }) {
+  const selectedLanguage = languages.find((item) => item.code === language) || languages[0]
+  return <fieldset className="translation-group"><legend>{label}</legend><div className="translation-fields"><label className="translation-label"><span>{selectedLanguage.short}</span>{multiline ? <textarea required value={value?.[language] || ''} rows={language === 'en' ? 3 : 2} onChange={(event) => onChange(field, language, event.target.value, option)} /> : <input required value={value?.[language] || ''} onChange={(event) => onChange(field, language, event.target.value, option)} />}</label></div></fieldset>
 }
 
 function PageHeading({ eyebrow, title, description }) {

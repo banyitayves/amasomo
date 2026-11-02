@@ -43,7 +43,8 @@ function fail(status, message) {
 }
 
 function localized(value, language) {
-  return value?.[language] ?? value?.en ?? ''
+  const translations = value && typeof value === 'object' && !Array.isArray(value) ? Object.values(value) : []
+  return value?.[language] || value?.en || translations.find((translation) => typeof translation === 'string' && translation.trim()) || ''
 }
 
 function normalizeSearchText(value) {
@@ -68,8 +69,15 @@ function requireText(value, label, max = 5000) {
 
 function requireTranslations(value, label, max = 5000) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail(400, `${label} must include translations.`)
-  for (const language of ['rw', 'en', 'sw', 'fr']) requireText(value[language], `${label} (${language})`, max)
-  return value
+  const allowedLanguages = ['rw', 'en', 'sw', 'fr']
+  const translations = {}
+  for (const [language, translation] of Object.entries(value)) {
+    if (!allowedLanguages.includes(language)) fail(400, `${label} includes an unsupported language.`)
+    if (typeof translation !== 'string' || translation.length > max) fail(400, `${label} must be under ${max} characters.`)
+    if (translation.trim()) translations[language] = translation.trim()
+  }
+  if (!Object.keys(translations).length) fail(400, `${label} is required in at least one language.`)
+  return translations
 }
 
 function optionalTranslations(value, label, max = 500) {

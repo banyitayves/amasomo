@@ -58,11 +58,11 @@ FRONTEND_ORIGIN=http://localhost:5173
 
 Open <http://localhost:5173>. Create your account using the email in `ADMIN_EMAIL` to get the content-management page; other accounts are students. If Supabase email confirmation is enabled, confirm the signup email before signing in.
 
-Use the language selector to switch between Kinyarwanda, English, Kiswahili, and French. The admin editor requires the title, summary/notes, question, answers, and explanation to be entered in all four languages. Students can search the translated topics, notes, and practice questions, bookmark lessons and questions, and request private teacher support. The administrator's **Manage content → Teacher requests** tab includes the student's email/phone and lets you update request status.
+Use the language selector to switch between Kinyarwanda, English, Kiswahili, and French. In **Manage content**, choose a content language and enter each lesson, question, exam, or resource in that language. Switch the content-language selector and edit the same item to add translations later; students see the available text when their selected language is not yet translated. Students can search topics, notes, and practice questions, bookmark lessons and questions, and request private teacher support. The administrator's **Manage content → Teacher requests** tab includes the student's email/phone and lets you update request status.
 
 ### Creating exercises and timed exams
 
-- Under **Manage content → Practice**, create an exercise for instant feedback or attach a question to an exam. Add the question and four choices in each supported language, select its correct choice, and provide an explanation.
+- Under **Manage content → Practice**, create an exercise for instant feedback or attach a question to an exam. Add the question and four choices in the selected content language, select its correct choice, and provide an explanation. Add other language versions later by editing the item after switching the content language.
 - Under **Manage content → Exams**, create a draft with its subject and time limit. Use **Add question** on the exam to create and attach questions. Publish it only when its questions are ready; students then see it in **Practice exams** and get a timed score and answer review.
 - Under **Manage content → Exams**, use **Upload exam paper** to jump to the resource uploader with the exam-paper category selected. Upload downloadable PDF or Office papers (up to 50 MB); students can download them from Study resources. These files are separate from interactive exercises and timed exams.
 - Under **Manage content → Study resources**, upload downloadable notes, past papers, exercise sheets, or other resources.
@@ -87,7 +87,7 @@ The project is configured for a single Vercel deployment: Vite builds static fil
 
 ## Uploading and downloading resources
 
-After running `backend/resources.sql`, sign in with the administrator account and open **Manage content → Study resources**. Add a translated title, choose a category and optional subject, then upload a PDF, Office document, image, or text file (up to 50 MB). Students can browse and download published resources from **Study resources**. Files stay in a private Storage bucket; the API issues short-lived download links only to signed-in students.
+After running `backend/resources.sql`, sign in with the administrator account and open **Manage content → Study resources**. Add a title in the selected content language, choose a category and optional subject, then upload a PDF, Office document, image, or text file (up to 50 MB). Switch the content language and edit the resource to add a translated title or description later. Students can browse and download published resources from **Study resources**. Files stay in a private Storage bucket; the API issues short-lived download links only to signed-in students.
 
 Vercel and Supabase offer free tiers subject to their current limits and terms. Review usage and pricing on both platforms before production use.
 

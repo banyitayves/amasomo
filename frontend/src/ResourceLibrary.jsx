@@ -75,13 +75,14 @@ function emptyTranslations() {
   return Object.fromEntries(languages.map(({ code }) => [code, '']))
 }
 
-function ResourceTranslations({ label, value, onChange, multiline = false, required = false }) {
-  return <fieldset className="translation-group"><legend>{label}</legend><div className="translation-fields">{languages.map(({ code, short }) => <label className="translation-label" key={code}><span>{short}</span>{multiline
-    ? <textarea value={value[code] || ''} rows={2} maxLength={500} required={required} onChange={(event) => onChange(code, event.target.value)} />
-    : <input value={value[code] || ''} maxLength={180} required={required} onChange={(event) => onChange(code, event.target.value)} />}</label>)}</div></fieldset>
+function ResourceTranslations({ label, value, language, onChange, multiline = false, required = false }) {
+  const selectedLanguage = languages.find((item) => item.code === language) || languages[0]
+  return <fieldset className="translation-group"><legend>{label}</legend><div className="translation-fields"><label className="translation-label"><span>{selectedLanguage.short}</span>{multiline
+    ? <textarea value={value[language] || ''} rows={2} maxLength={500} required={required} onChange={(event) => onChange(language, event.target.value)} />
+    : <input value={value[language] || ''} maxLength={180} required={required} onChange={(event) => onChange(language, event.target.value)} />}</label></div></fieldset>
 }
 
-export function AdminResourcesPage({ token, language, subjects, onChanged, initialCategory = 'notes' }) {
+export function AdminResourcesPage({ token, language, entryLanguage, subjects, onChanged, initialCategory = 'notes' }) {
   const [resources, setResources] = useState([])
   const [title, setTitle] = useState(emptyTranslations)
   const [description, setDescription] = useState(emptyTranslations)
@@ -200,8 +201,8 @@ export function AdminResourcesPage({ token, language, subjects, onChanged, initi
       <section className="panel admin-form-panel">
         <div className="panel-heading"><div><span className="section-kicker">{t(language, 'languageEyebrow')}</span><h2>{editing ? t(language, 'edit') : t(language, 'resourceUpload')}</h2></div>{editing && <button className="icon-quiet" onClick={resetForm} aria-label={t(language, 'cancel')}><X size={17} /></button>}</div>
         <form className="admin-form" onSubmit={save}>
-          <ResourceTranslations label={t(language, 'resourceTitle')} value={title} required onChange={(code, value) => setTitle((current) => ({ ...current, [code]: value }))} />
-          <ResourceTranslations label={t(language, 'resourceDescription')} value={description} multiline onChange={(code, value) => setDescription((current) => ({ ...current, [code]: value }))} />
+          <ResourceTranslations label={t(language, 'resourceTitle')} value={title} language={entryLanguage} required onChange={(code, value) => setTitle((current) => ({ ...current, [code]: value }))} />
+          <ResourceTranslations label={t(language, 'resourceDescription')} value={description} language={entryLanguage} multiline onChange={(code, value) => setDescription((current) => ({ ...current, [code]: value }))} />
           <label className="field-label">{t(language, 'resourceCategory')}<select value={category} onChange={(event) => setCategory(event.target.value)}>{categories.map((item) => <option key={item} value={item}><CategoryLabel category={item} language={language} /></option>)}</select></label>
           <label className="field-label">{t(language, 'resourceSubject')}<select value={subjectId} onChange={(event) => setSubjectId(event.target.value)}><option value="">{t(language, 'resourceAllSubjects')}</option>{subjects.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
           {!editing && <label className="field-label">{t(language, 'resourceFile')}<input className="resource-file-input" type="file" required accept={acceptedFiles} onChange={(event) => setFile(event.target.files?.[0] || null)} /><small className="resource-hint">{t(language, 'resourceUploadHint')} · {t(language, 'resourceMaxSize')}</small></label>}
