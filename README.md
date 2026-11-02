@@ -1,4 +1,4 @@
-# Ikirezi Learning
+# Amasomo Meza
 
 A mobile-friendly multilingual learning website built with React, Vite, Tailwind CSS, Express, Node.js, and Supabase. The interface and starter lessons support Kinyarwanda, English, Kiswahili, and French.
 

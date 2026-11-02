@@ -23,6 +23,10 @@ function IconFor({ name, className = 'h-5 w-5' }) {
   return <Icon className={className} strokeWidth={1.8} />
 }
 
+function BrandLogo({ className = '' }) {
+  return <img className={`brand-logo ${className}`} src="/amasomo-logo.jpg" alt="Amasomo Meza" width="1152" height="768" />
+}
+
 function LanguageSelect({ language, onChange, compact = false }) {
   return (
     <label className={`language-select ${compact ? 'language-compact' : ''}`} aria-label={t(language, 'language')}>
@@ -80,7 +84,7 @@ function AuthScreen({ language, onLanguage, onSession }) {
       <section className="auth-story">
         <div className="story-glow story-glow-one" /><div className="story-glow story-glow-two" />
         <div className="story-inner">
-          <div className="brand brand-light"><span className="brand-mark"><BookOpen size={19} /></span><span>iki<span>rezi</span></span></div>
+          <div className="brand"><BrandLogo /></div>
           <div className="story-copy">
             <span className="eyebrow eyebrow-light"><Sparkles size={14} /> {copy('welcome')}</span>
             <h1>{copy('authPrompt')}</h1>
@@ -91,7 +95,7 @@ function AuthScreen({ language, onLanguage, onSession }) {
         </div>
       </section>
       <section className="auth-panel">
-        <header className="auth-top"><span className="brand brand-mobile"><span className="brand-mark"><BookOpen size={19} /></span><span>iki<span>rezi</span></span></span><LanguageSelect language={language} onChange={onLanguage} /></header>
+        <header className="auth-top"><span className="brand brand-mobile"><BrandLogo /></span><LanguageSelect language={language} onChange={onLanguage} /></header>
         <div className="auth-card">
           <div className="auth-mobile-greeting"><span className="eyebrow"><Sparkles size={14} /> {copy('welcome')}</span></div>
           <div className="auth-heading"><span className="auth-icon"><LockKeyhole size={21} /></span><h2>{title}</h2><p>{mode === 'login' ? copy('authDetails') : mode === 'register' ? copy('authPrompt') : copy('resetInfo')}</p></div>
@@ -375,7 +379,7 @@ function App() {
   }
 
   if (!configured) return <SetupScreen language={language} onLanguage={setLanguage} />
-  if (!authReady) return <div className="loading-screen"><span className="brand-mark"><BookOpen size={20} /></span><p>{copy('loading')}</p></div>
+  if (!authReady) return <div className="loading-screen"><BrandLogo /><p>{copy('loading')}</p></div>
   if (!session) return <AuthScreen language={language} onLanguage={setLanguage} onSession={setSession} />
 
   const nav = [...sections, ...(isAdmin ? ['admin'] : [])]
@@ -384,7 +388,7 @@ function App() {
       {mobileMenu && <button className="mobile-backdrop" aria-label={copy('closeMenu')} onClick={() => setMobileMenu(false)} />}
       <aside className={`sidebar ${mobileMenu ? 'sidebar-open' : ''}`}>
         <div className="sidebar-brand">
-          <div className="brand brand-light"><span className="brand-mark"><BookOpen size={19} /></span><span>iki<span>rezi</span></span></div>
+          <div className="brand"><BrandLogo /></div>
           <button className="sidebar-close" aria-label="Close menu" onClick={() => setMobileMenu(false)}><X size={19} /></button>
         </div>
         <div className="sidebar-caption">{copy('spaceTagline')}</div>
@@ -402,7 +406,7 @@ function App() {
       <main className="main-area">
         <header className="topbar">
           <button className="menu-toggle" onClick={() => setMobileMenu(true)} aria-label="Open menu"><Menu size={21} /></button>
-          <div className="breadcrumb"><span>ikirezi</span><ChevronRight size={13} /><b>{copy(section === 'lesson' || section === 'exam' ? 'subjects' : section === 'admin' ? 'admin' : section)}</b></div>
+          <div className="breadcrumb"><BrandLogo className="breadcrumb-logo" /><ChevronRight size={13} /><b>{copy(section === 'lesson' || section === 'exam' ? 'subjects' : section === 'admin' ? 'admin' : section)}</b></div>
           <div className="topbar-actions"><span className="today-date">{new Intl.DateTimeFormat(language, { weekday: 'short', month: 'short', day: 'numeric' }).format(new Date())}</span><LanguageSelect language={language} onChange={setLanguage} compact /><span className="top-avatar">{(user.user_metadata?.display_name || user.email || 'S').slice(0, 1).toUpperCase()}</span></div>
         </header>
         <div className="content-wrap">
@@ -433,7 +437,7 @@ function App() {
 }
 
 function SetupScreen({ language, onLanguage }) {
-  return <main className="setup-screen"><div className="setup-card"><div className="brand"><span className="brand-mark"><BookOpen size={19} /></span><span>iki<span>rezi</span></span></div><div className="setup-art"><Sparkles size={27} /></div><h1>{t(language, 'setupMissing')}</h1><p>{t(language, 'setupDetails')}</p><LanguageSelect language={language} onChange={onLanguage} /></div></main>
+  return <main className="setup-screen"><div className="setup-card"><div className="brand"><BrandLogo /></div><div className="setup-art"><Sparkles size={27} /></div><h1>{t(language, 'setupMissing')}</h1><p>{t(language, 'setupDetails')}</p><LanguageSelect language={language} onChange={onLanguage} /></div></main>
 }
 
 function DeveloperContact({ language }) {

@@ -779,7 +779,7 @@ app.use((error, _req, res, _next) => {
 
 if (!process.env.VERCEL) {
   app.listen(port, () => {
-    console.log(`Ikirezi API listening on http://localhost:${port}`)
+    console.log(`Amasomo Meza API listening on http://localhost:${port}`)
   })
 }
 
