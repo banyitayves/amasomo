@@ -721,6 +721,63 @@ app.post('/api/admin/questions', requireAdmin, async (req, res) => {
   res.status(201).json({ question })
 })
 
+app.post('/api/admin/exams/:id/questions/import', requireAdmin, async (req, res) => {
+  const exam = await run(supabase.from('exams').select('id,subject_id').eq('id', req.params.id).maybeSingle())
+  if (!exam) return res.status(404).json({ error: 'Exam not found.' })
+
+  const topicId = requireText(req.body.topic_id, 'Topic')
+  const topic = await run(supabase.from('topics').select('id').eq('id', topicId).eq('subject_id', exam.subject_id).maybeSingle())
+  if (!topic) fail(400, 'Choose a topic in the exam subject.')
+
+  const inputQuestions = req.body.questions
+  if (!Array.isArray(inputQuestions) || inputQuestions.length < 1 || inputQuestions.length > 100) {
+    fail(400, 'Import between 1 and 100 questions at a time.')
+  }
+  const language = ['rw', 'en', 'sw', 'fr'].includes(req.body.language) ? req.body.language : ''
+  if (!language) fail(400, 'Choose a supported language for imported questions.')
+
+  const questions = inputQuestions.map((input, index) => {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) fail(400, `Question ${index + 1} is invalid.`)
+    const answer = requireText(input.answer, `Question ${index + 1} answer`, 1).toUpperCase()
+    if (!['A', 'B', 'C', 'D'].includes(answer)) fail(400, `Question ${index + 1} answer must be A, B, C, or D.`)
+    const options = input.options
+    if (!options || typeof options !== 'object' || Array.isArray(options)) fail(400, `Question ${index + 1} must have four choices.`)
+    const translations = {}
+    for (const key of ['A', 'B', 'C', 'D']) {
+      translations[key] = requireTranslations({ [language]: options[key] }, `Question ${index + 1} choice ${key}`, 255)
+    }
+    return {
+      topic_id: topicId,
+      question_type: 'exam',
+      prompt: requireTranslations({ [language]: input.prompt }, `Question ${index + 1}`, 500),
+      options: translations,
+      answer,
+      explanation: requireTranslations({ [language]: input.explanation }, `Question ${index + 1} explanation`, 1000),
+    }
+  })
+
+  const questionIds = questions.map(() => randomUUID())
+  await run(supabase.from('questions').insert(questions.map((question, index) => ({
+    ...question,
+    id: questionIds[index],
+  }))))
+  try {
+    await run(supabase.from('exam_questions').insert(questionIds.map((questionId, sort_order) => ({
+      exam_id: exam.id,
+      question_id: questionId,
+      sort_order,
+    }))))
+  } catch (linkError) {
+    try {
+      await run(supabase.from('questions').delete().in('id', questionIds))
+    } catch (cleanupError) {
+      throw new Error(`Questions were created but could not be linked to the exam, and cleanup failed: ${cleanupError.message}`)
+    }
+    throw linkError
+  }
+  res.status(201).json({ imported: questionIds.length })
+})
+
 app.put('/api/admin/questions/:id', requireAdmin, async (req, res) => {
   const changes = {}
   if (req.body.topic_id) changes.topic_id = requireText(req.body.topic_id, 'Topic')

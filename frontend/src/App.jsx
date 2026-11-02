@@ -5,6 +5,7 @@ import {
   MessageCircle, Phone, Play, Plus, RotateCcw, Search, Sparkles, Target, Trash2, Upload, X,
 } from 'lucide-react'
 import { api, configured, supabase } from './api.js'
+import { examCsvTemplate, parseExamCsv } from './examCsv.js'
 import { languages, t, text } from './i18n.js'
 const ResourcesPage = lazy(() => import('./ResourceLibrary.jsx').then((module) => ({ default: module.ResourcesPage })))
 const AdminResourcesPage = lazy(() => import('./ResourceLibrary.jsx').then((module) => ({ default: module.AdminResourcesPage })))
@@ -17,6 +18,7 @@ const SupportPage = lazy(() => import('./StudyTools.jsx').then((module) => ({ de
 const iconMap = { calculator: Target, leaf: Leaf, atom: Atom, flask: FlaskConical, book: BookOpen }
 const sections = ['home', 'subjects', 'practice', 'exams', 'resources', 'search', 'bookmarks', 'askTeacher', 'progress']
 const developerPhone = '+250791756160'
+const maxExamCsvSize = 512 * 1024
 
 function IconFor({ name, className = 'h-5 w-5' }) {
   const Icon = iconMap[name] || BookOpen
@@ -613,7 +615,7 @@ function ExamPage({ exam, answers, setAnswers, index, setIndex, secondsLeft, onS
 }
 
 function ExamResult({ result, language, onAgain }) {
-  return <section className="result-page"><div className="result-hero"><span className="result-medal"><Award size={28} /></span><span className="section-kicker">{t(language, 'examComplete')}</span><h1>{result.percent}%</h1><p>{result.score} / {result.total} · {result.title}</p><div className="result-track"><span style={{ width: `${result.percent}%` }} /></div><button className="button button-primary" onClick={onAgain}><RotateCcw size={15} />{t(language, 'tryAgain')}</button></div><div className="review-section"><div className="section-heading"><div><span className="section-kicker">{t(language, 'reviewAnswers')}</span><h2>{t(language, 'reviewAnswers')}</h2></div></div><div className="review-list">{result.review.map((answer, index) => <article className={`review-card ${answer.correct ? 'review-right' : 'review-missed'}`} key={answer.questionId}><span className="review-check">{answer.correct ? <Check size={16} /> : <X size={16} />}</span><div><span className="section-kicker">{t(language, 'question')} {index + 1} · {answer.topicTitle}</span><h3>{answer.prompt}</h3>{!answer.correct && <p><b>{t(language, 'correctAnswer')}:</b> {answer.correctLabel}</p>}<p>{answer.explanation}</p></div></article>)}</div></div></section>
+  return <section className="result-page"><div className="result-hero"><span className="result-medal"><Award size={28} /></span><span className="section-kicker">{t(language, 'examComplete')}</span><h1>{result.percent}%</h1><p>{result.score} / {result.total} · {result.title}</p><div className="result-track"><span style={{ width: `${result.percent}%` }} /></div><button className="button button-primary" onClick={onAgain}><RotateCcw size={15} />{t(language, 'tryAgain')}</button></div><div className="review-section"><div className="section-heading"><div><span className="section-kicker">{t(language, 'reviewAnswers')}</span><h2>{t(language, 'reviewAnswers')}</h2></div></div><div className="review-list">{result.review.map((answer, index) => <article className={`review-card ${answer.correct ? 'review-right' : 'review-missed'}`} key={answer.questionId}><span className="review-check">{answer.correct ? <Check size={16} /> : <X size={16} />}</span>  <div><span className="section-kicker">{t(language, 'question')} {index + 1} · {answer.topicTitle}</span><h3>{answer.prompt}</h3><p><b>{t(language, 'correctAnswer')} ({answer.correctAnswer}):</b> {answer.correctLabel}</p>{answer.selected && !answer.correct && <p><b>{t(language, 'yourAnswer')}:</b> {answer.selected}</p>}<p>{answer.explanation}</p></div></article>)}</div></div></section>
 }
 
 function ProgressPage({ progress, subjects, language }) {
@@ -636,6 +638,9 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
   const [managedExams, setManagedExams] = useState([])
   const [editing, setEditing] = useState(null)
   const [editingExam, setEditingExam] = useState(null)
+  const [examCsvFile, setExamCsvFile] = useState(null)
+  const [examCsvInputKey, setExamCsvInputKey] = useState(0)
+  const examCsvInput = useRef(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const topics = subjects.flatMap((subject) => (subject.topics || []).map((topic) => ({ ...topic, subjectName: subject.name })))
@@ -650,6 +655,9 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
     subject_id: subjects[0]?.id || '', title: emptyTranslations(), description: emptyTranslations(),
     duration_minutes: 20, published: false,
   }))
+  const [importTopicId, setImportTopicId] = useState(topics[0]?.id || '')
+  const examTopics = topics.filter((topic) => topic.subject_id === examForm.subject_id)
+  const selectedImportTopicId = examTopics.some((topic) => topic.id === importTopicId) ? importTopicId : examTopics[0]?.id || ''
 
   const reload = useCallback(async () => {
     const [lessonData, questionData, examData] = await Promise.all([
@@ -701,6 +709,9 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
     setKind('exams')
     setEditingExam(exam.id)
     setEditing(null)
+    setExamCsvFile(null)
+    setExamCsvInputKey((current) => current + 1)
+    setImportTopicId(topics.find((topic) => topic.subject_id === exam.subject_id)?.id || '')
     setExamForm({
       subject_id: exam.subject_id, title: exam.title, description: exam.description,
       duration_minutes: exam.duration_minutes, published: exam.published,
@@ -710,27 +721,69 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
   function startNewExam() {
     setEditingExam(null)
     setEditing(null)
+    setExamCsvFile(null)
+    setExamCsvInputKey((current) => current + 1)
     setExamForm({
       subject_id: subjects[0]?.id || '', title: emptyTranslations(), description: emptyTranslations(),
       duration_minutes: 20, published: false,
     })
+    setImportTopicId(topics.find((topic) => topic.subject_id === subjects[0]?.id)?.id || '')
   }
 
   async function saveExam(event) {
     event.preventDefault()
     setBusy(true)
     setError('')
+    let examId = editingExam
+    let examSaved = false
+    let importCompleted = false
     try {
-      await api(`/admin/exams${editingExam ? `/${editingExam}` : ''}`, {
+      let importedQuestions = null
+      if (examCsvFile) {
+        if (examCsvFile.size > maxExamCsvSize) throw new Error(copy('examCsvMaxSize'))
+        if (!selectedImportTopicId) throw new Error(copy('examCsvChooseTopic'))
+        importedQuestions = parseExamCsv(await examCsvFile.text())
+      }
+      const { exam: savedExam } = await api(`/admin/exams${editingExam ? `/${editingExam}` : ''}`, {
         token, method: editingExam ? 'PUT' : 'POST',
         body: JSON.stringify({ ...examForm, duration_minutes: Number(examForm.duration_minutes) }),
       })
-      setEditingExam(null)
+      examId = savedExam.id
+      examSaved = true
+      if (importedQuestions) {
+        await api(`/admin/exams/${examId}/questions/import`, {
+          token,
+          method: 'POST',
+          body: JSON.stringify({
+            topic_id: selectedImportTopicId,
+            language: entryLanguage,
+            questions: importedQuestions.map((question) => ({
+              ...question,
+              prompt: { [entryLanguage]: question.prompt },
+              options: Object.fromEntries(Object.entries(question.options).map(([key, value]) => [key, { [entryLanguage]: value }])),
+              explanation: { [entryLanguage]: question.explanation },
+            })),
+          }),
+        })
+        importCompleted = true
+      }
       startNewExam()
+      if (examCsvInput.current) examCsvInput.current.value = ''
       await reload()
       onChanged()
     } catch (saveError) {
-      setError(saveError.message)
+      let message = saveError.message
+      if (examSaved && examCsvFile && !importCompleted) {
+        setEditingExam(examId)
+        message = `${copy('examCsvImportFailed')}: ${saveError.message}`
+        try {
+          await reload()
+          onChanged()
+        } catch (reloadError) {
+          message += ` · ${reloadError.message}`
+        }
+      }
+      setError(message)
     } finally {
       setBusy(false)
     }
@@ -827,10 +880,21 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
         <section className="panel admin-form-panel">
           <div className="panel-heading"><div><span className="section-kicker">{copy('languageEyebrow')}</span><h2>{editingExam ? copy('editExam') : copy('addExam')}</h2></div>{editingExam && <button className="icon-quiet" onClick={startNewExam} aria-label={copy('cancel')}><X size={17} /></button>}</div>
           <form className="admin-form" onSubmit={saveExam}>
-            <label className="field-label">{copy('selectSubject')}<select required value={examForm.subject_id} onChange={(event) => setExamForm({ ...examForm, subject_id: event.target.value })}><option value="" disabled>{copy('selectSubject')}</option>{subjects.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}</select></label>
+            <label className="field-label">{copy('selectSubject')}<select required value={examForm.subject_id} onChange={(event) => {
+              const subjectId = event.target.value
+              setExamForm({ ...examForm, subject_id: subjectId })
+              setImportTopicId(topics.find((topic) => topic.subject_id === subjectId)?.id || '')
+            }}><option value="" disabled>{copy('selectSubject')}</option>{subjects.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}</select></label>
             <TranslationFields label={copy('examTitle')} field="title" value={examForm.title} language={entryLanguage} onChange={(field, locale, value) => setExamForm((current) => ({ ...current, [field]: { ...current[field], [locale]: value } }))} />
             <TranslationFields label={copy('examDescription')} field="description" value={examForm.description} language={entryLanguage} onChange={(field, locale, value) => setExamForm((current) => ({ ...current, [field]: { ...current[field], [locale]: value } }))} multiline />
             <label className="field-label">{copy('examDuration')}<input type="number" min="1" max="240" required value={examForm.duration_minutes} onChange={(event) => setExamForm({ ...examForm, duration_minutes: event.target.value })} /></label>
+            <div className="exam-csv-import">
+              <b>{copy('examCsvImportTitle')}</b>
+              <p>{copy('examCsvImportHint')}</p>
+              <a className="exam-csv-template" href={`data:text/csv;charset=utf-8,${encodeURIComponent(examCsvTemplate)}`} download="amasomo-exam-template.csv">{copy('examCsvDownloadTemplate')}<Download size={14} /></a>
+              <label className="field-label">{copy('examCsvTopic')}<select value={selectedImportTopicId} onChange={(event) => setImportTopicId(event.target.value)} disabled={!examTopics.length} required={Boolean(examCsvFile)}><option value="">{copy('examCsvChooseTopic')}</option>{examTopics.map((topic) => <option value={topic.id} key={topic.id}>{topic.title}</option>)}</select></label>
+              <label className="field-label">{copy('examCsvFile')}<input key={examCsvInputKey} ref={examCsvInput} className="resource-file-input" type="file" accept=".csv,text/csv" onChange={(event) => setExamCsvFile(event.target.files?.[0] || null)} /><small className="resource-hint">{copy('examCsvOptional')}</small></label>
+            </div>
             {editingExam && <label className="exam-publish-toggle"><input type="checkbox" checked={examForm.published} onChange={(event) => setExamForm({ ...examForm, published: event.target.checked })} />{copy('publishExam')}</label>}
             {!editingExam && <p className="resource-hint">{copy('newExamDraftHint')}</p>}
             <button className="button button-primary button-wide" disabled={busy || !subjects.length}>{busy ? '…' : copy('save')}<Check size={15} /></button>
