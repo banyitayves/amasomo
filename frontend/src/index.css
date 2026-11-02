@@ -393,7 +393,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .admin-layout, .resource-admin-layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 760px) {
-  body { min-width: 360px; }
+  body { min-width: 320px; }
   .auth-page { display: block; min-height: 100dvh; }
   .auth-story { display: none; }
   .auth-panel { min-height: 100dvh; padding: 17px 23px 20px; }
