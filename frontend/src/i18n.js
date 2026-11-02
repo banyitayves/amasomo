@@ -78,7 +78,8 @@ const copy = {
     sendRequest: 'Send support request', teacherRequestSent: 'Your request was sent. A teacher will contact you.',
     yourRequests: 'Your requests', noTeacherRequests: 'You have not sent a support request yet.',
     pending: 'Waiting', contacted: 'Contacted', resolved: 'Resolved', requestStatus: 'Request status',
-    supportInbox: 'Teacher requests', topicNotFound: 'That topic could not be found.',
+    supportInbox: 'Teacher requests', supportPendingCount: 'Pending requests', refresh: 'Refresh',
+    topicNotFound: 'That topic could not be found.',
     setupDetails: 'Create a Supabase project, copy .env.example to .env, and add your project URL and publishable key. Then run the database setup SQL.',
   },
   rw: {
@@ -151,7 +152,8 @@ const copy = {
     sendRequest: 'Ohereza ubusabe', teacherRequestSent: 'Ubusabe bwawe bwoherejwe. Umwarimu azaguhamagara.',
     yourRequests: 'Ubusabe bwawe', noTeacherRequests: 'Nta busabe bwo gufashwa uratanga.',
     pending: 'Bitegereje', contacted: 'Baraguhamagaye', resolved: 'Byakemutse', requestStatus: 'Imiterere y’ubusabe',
-    supportInbox: 'Ubusabe bwo gufashwa', topicNotFound: 'Umutwe wahisemo ntubashije kuboneka.',
+    supportInbox: 'Ubusabe bwo gufashwa', supportPendingCount: 'Ubusabe butegereje', refresh: 'Kuvugurura',
+    topicNotFound: 'Umutwe wahisemo ntubashije kuboneka.',
     setupDetails: 'Fungura umushinga wa Supabase, ukope .env.example uyite .env, ushyiremo aderesi ya API n’urufunguzo rusange. Hanyuma ukoreshe SQL yo gutegura ububiko.',
   },
   sw: {
@@ -224,7 +226,8 @@ const copy = {
     sendRequest: 'Tuma ombi la msaada', teacherRequestSent: 'Ombi lako limetumwa. Mwalimu atawasiliana nawe.',
     yourRequests: 'Maombi yako', noTeacherRequests: 'Bado hujatuma ombi la msaada.',
     pending: 'Inasubiri', contacted: 'Amewasiliana nawe', resolved: 'Imetatuliwa', requestStatus: 'Hali ya ombi',
-    supportInbox: 'Maombi ya wanafunzi', topicNotFound: 'Mada hiyo haikupatikana.',
+    supportInbox: 'Maombi ya wanafunzi', supportPendingCount: 'Maombi yanayosubiri', refresh: 'Onyesha upya',
+    topicNotFound: 'Mada hiyo haikupatikana.',
     setupDetails: 'Unda mradi wa Supabase, nakili .env.example kama .env, na uweke anwani ya mradi pamoja na ufunguo wa umma. Kisha endesha SQL ya usanidi wa hifadhidata.',
   },
   fr: {
@@ -299,7 +302,8 @@ const copy = {
     sendRequest: 'Envoyer la demande', teacherRequestSent: 'Votre demande a été envoyée. Un professeur vous contactera.',
     yourRequests: 'Vos demandes', noTeacherRequests: 'Vous n’avez encore envoyé aucune demande.',
     pending: 'En attente', contacted: 'Contacté', resolved: 'Résolu', requestStatus: 'Statut de la demande',
-    supportInbox: 'Demandes des élèves', topicNotFound: 'Ce chapitre est introuvable.',
+    supportInbox: 'Demandes des élèves', supportPendingCount: 'Demandes en attente', refresh: 'Actualiser',
+    topicNotFound: 'Ce chapitre est introuvable.',
     setupDetails: 'Créez un projet Supabase, copiez .env.example vers .env et ajoutez l’URL du projet et sa clé publique. Exécutez ensuite le SQL de configuration.',
   },
 }

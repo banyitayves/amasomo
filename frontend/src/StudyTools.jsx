@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, BookOpen, Bookmark, CircleHelp, Mail, MessageCircle, Phone, Search } from 'lucide-react'
+import { ArrowRight, BookOpen, Bookmark, CircleHelp, Mail, MessageCircle, Phone, RefreshCw, Search } from 'lucide-react'
 import { api } from './api.js'
 import { t } from './i18n.js'
 
@@ -179,20 +179,32 @@ export function SupportPage({ language, token, subjects }) {
   </>
 }
 
-export function AdminSupportRequests({ language, token }) {
+export function AdminSupportRequests({ language, token, onPendingCount }) {
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [updating, setUpdating] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     let active = true
+    setError('')
+    setRefreshing(true)
     api(`/admin/support-requests?lang=${language}`, { token })
-      .then(({ requests: items }) => { if (active) setRequests(items) })
+      .then(({ requests: items }) => {
+        if (!active) return
+        setRequests(items)
+        onPendingCount(items.filter((request) => request.status === 'pending').length)
+      })
       .catch((requestError) => { if (active) setError(requestError.message) })
-      .finally(() => { if (active) setLoading(false) })
+      .finally(() => {
+        if (!active) return
+        setLoading(false)
+        setRefreshing(false)
+      })
     return () => { active = false }
-  }, [language, token])
+  }, [language, onPendingCount, refreshKey, token])
 
   async function updateStatus(id, status) {
     setUpdating(id)
@@ -200,6 +212,7 @@ export function AdminSupportRequests({ language, token }) {
     try {
       await api(`/admin/support-requests/${id}`, { token, method: 'PATCH', body: JSON.stringify({ status }) })
       setRequests((current) => current.map((request) => request.id === id ? { ...request, status } : request))
+      onPendingCount(requests.filter((request) => request.id !== id && request.status === 'pending').length + (status === 'pending' ? 1 : 0))
     } catch (requestError) {
       setError(requestError.message)
     } finally {
@@ -207,7 +220,12 @@ export function AdminSupportRequests({ language, token }) {
     }
   }
 
+  const pendingCount = requests.filter((request) => request.status === 'pending').length
   return <section className="tool-list admin-requests">
+    <div className="admin-requests-header">
+      <div><span className="section-kicker">{t(language, 'supportInbox')}</span><h2>{t(language, 'supportPendingCount')}: {pendingCount}</h2></div>
+      <button className="button button-outline button-small" type="button" disabled={refreshing} onClick={() => setRefreshKey((current) => current + 1)}><RefreshCw size={14} className={refreshing ? 'resource-spinner' : ''} />{t(language, 'refresh')}</button>
+    </div>
     {error && <div className="notice notice-error" role="alert">{error}</div>}
     {loading && <div className="inline-loading">{t(language, 'loading')}</div>}
     {!loading && !requests.length && <div className="empty-card"><MessageCircle size={22} /><p>{t(language, 'noTeacherRequests')}</p></div>}

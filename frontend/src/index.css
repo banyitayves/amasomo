@@ -347,9 +347,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .attempt-score { color: #3d704d; font-size: 12px; font-weight: 800; }
 .attempt-fraction { min-width: 35px; color: #8b978e; font-size: 9px; text-align: right; }
 
-.admin-tabs { display: flex; gap: 8px; margin-bottom: 13px; }
-.admin-tabs button { display: inline-flex; min-height: 36px; align-items: center; gap: 7px; padding: 0 11px; border: 1px solid #e3e9e1; border-radius: 10px; color: #718077; background: #fff; font-size: 10px; font-weight: 600; }
+.admin-tabs { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 13px; padding-bottom: 3px; scrollbar-width: thin; }
+.admin-tabs button { display: inline-flex; min-height: 36px; flex: none; align-items: center; gap: 7px; padding: 0 11px; border: 1px solid #e3e9e1; border-radius: 10px; color: #718077; background: #fff; font-size: 10px; font-weight: 600; }
 .admin-tabs button.selected { border-color: #b7cfb1; color: #326447; background: #eef5eb; }
+.admin-tab-count { display: grid; min-width: 20px; height: 20px; place-items: center; padding: 0 5px; border-radius: 99px; color: #765d31; background: #fbf0d9; font-size: 9px; font-weight: 800; }
 .admin-layout { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); align-items: start; gap: 13px; }
 .admin-row { display: flex; min-height: 48px; align-items: center; gap: 8px; border-top: 1px solid #edf0ec; }
 .admin-row-icon { display: grid; width: 29px; height: 29px; flex: none; place-items: center; border-radius: 9px; color: #64866a; background: #eff5eb; }
@@ -537,6 +538,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .status-contacted { color: #4d6e8d; background: #edf4fa; }
 .status-resolved { color: #46734d; background: #eaf4e8; }
 .admin-requests { margin-top: 2px; }
+.admin-requests-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 1px 8px; }
+.admin-requests-header h2 { margin: 5px 0 0; color: #35473a; font-size: 16px; }
 .admin-request-card { align-items: flex-start; }
 .request-card-heading { display: grid; gap: 4px; }
 .request-card-heading b { color: #36493b; font-size: 11px; }

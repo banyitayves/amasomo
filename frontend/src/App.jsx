@@ -619,7 +619,8 @@ function ProgressPage({ progress, subjects, language }) {
 
 function AdminPage({ subjects, exams, token, language, onChanged }) {
   const copy = (key) => t(language, key)
-  const [kind, setKind] = useState('lesson')
+  const [kind, setKind] = useState('support')
+  const [pendingRequestCount, setPendingRequestCount] = useState(0)
   const [lessons, setLessons] = useState([])
   const [questions, setQuestions] = useState([])
   const [editing, setEditing] = useState(null)
@@ -705,9 +706,9 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
       <button className={kind === 'lesson' ? 'selected' : ''} onClick={() => { setKind('lesson'); setEditing(null) }}><BookOpen size={16} />{copy('lessons')} ({lessons.length})</button>
       <button className={kind === 'question' ? 'selected' : ''} onClick={() => { setKind('question'); setEditing(null) }}><CircleHelp size={16} />{copy('practice')} ({questions.length})</button>
       <button className={kind === 'resources' ? 'selected' : ''} onClick={() => { setKind('resources'); setEditing(null) }}><Download size={16} />{copy('resources')}</button>
-      <button className={kind === 'support' ? 'selected' : ''} onClick={() => { setKind('support'); setEditing(null) }}><MessageCircle size={16} />{copy('supportInbox')}</button>
+      <button className={kind === 'support' ? 'selected' : ''} aria-label={`${copy('supportInbox')}: ${pendingRequestCount} ${copy('pending')}`} onClick={() => { setKind('support'); setEditing(null) }}><MessageCircle size={16} />{copy('supportInbox')}<span className="admin-tab-count">{pendingRequestCount}</span></button>
     </div>
-    {kind === 'resources' ? <AdminResourcesPage token={token} language={language} subjects={subjects} onChanged={onChanged} /> : kind === 'support' ? <AdminSupportRequests token={token} language={language} /> : <>
+    {kind === 'resources' ? <AdminResourcesPage token={token} language={language} subjects={subjects} onChanged={onChanged} /> : kind === 'support' ? <AdminSupportRequests token={token} language={language} onPendingCount={setPendingRequestCount} /> : <>
       {error && <div className="notice notice-error">{error}</div>}
       <div className="admin-layout">
         <section className="panel admin-list">
