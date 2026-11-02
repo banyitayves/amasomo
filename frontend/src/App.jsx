@@ -1,15 +1,22 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, Atom, Award, BookOpen, Check, CheckCircle2, ChevronDown, ChevronRight,
   CircleHelp, Clock3, Compass, Download, FlaskConical, GraduationCap, Leaf, LockKeyhole, LogOut, Menu,
-  Play, Plus, RotateCcw, Sparkles, Target, Trash2, X,
+  MessageCircle, Phone, Play, Plus, RotateCcw, Search, Sparkles, Target, Trash2, X,
 } from 'lucide-react'
 import { api, configured, supabase } from './api.js'
 import { languages, t, text } from './i18n.js'
-import { AdminResourcesPage, ResourcesPage } from './ResourceLibrary.jsx'
+const ResourcesPage = lazy(() => import('./ResourceLibrary.jsx').then((module) => ({ default: module.ResourcesPage })))
+const AdminResourcesPage = lazy(() => import('./ResourceLibrary.jsx').then((module) => ({ default: module.AdminResourcesPage })))
+const AdminSupportRequests = lazy(() => import('./StudyTools.jsx').then((module) => ({ default: module.AdminSupportRequests })))
+const BookmarkButton = lazy(() => import('./StudyTools.jsx').then((module) => ({ default: module.BookmarkButton })))
+const BookmarksPage = lazy(() => import('./StudyTools.jsx').then((module) => ({ default: module.BookmarksPage })))
+const SearchPage = lazy(() => import('./StudyTools.jsx').then((module) => ({ default: module.SearchPage })))
+const SupportPage = lazy(() => import('./StudyTools.jsx').then((module) => ({ default: module.SupportPage })))
 
 const iconMap = { calculator: Target, leaf: Leaf, atom: Atom, flask: FlaskConical, book: BookOpen }
-const sections = ['home', 'subjects', 'practice', 'exams', 'resources', 'progress']
+const sections = ['home', 'subjects', 'practice', 'exams', 'resources', 'search', 'bookmarks', 'askTeacher', 'progress']
+const developerPhone = '+250791756160'
 
 function IconFor({ name, className = 'h-5 w-5' }) {
   const Icon = iconMap[name] || BookOpen
@@ -80,7 +87,7 @@ function AuthScreen({ language, onLanguage, onSession }) {
             <p>{copy('authDetails')}</p>
             <div className="story-note"><span className="note-icon"><BookOpen size={19} /></span><span><b>{copy('learnSmall')}</b><small>{copy('curiosity')}</small></span><span className="note-arrow"><ArrowRight size={17} /></span></div>
           </div>
-          <div className="story-footer">{copy('welcome')}</div>
+          <div className="story-footer">{copy('welcome')}<DeveloperContact language={language} /></div>
         </div>
       </section>
       <section className="auth-panel">
@@ -103,7 +110,7 @@ function AuthScreen({ language, onLanguage, onSession }) {
           </div>
           <p className="auth-privacy">{copy('privateJourney')}</p>
         </div>
-        <div className="auth-bottom">{copy('everywhere')}</div>
+        <div className="auth-bottom">{copy('everywhere')}<DeveloperContact language={language} /></div>
       </section>
     </main>
   )
@@ -118,8 +125,10 @@ function App() {
   const [subjects, setSubjects] = useState([])
   const [exams, setExams] = useState([])
   const [progress, setProgress] = useState({ completedLessons: 0, subjectProgress: [], attempts: [], weakAreas: [], average: 0 })
+  const [bookmarkIds, setBookmarkIds] = useState([])
   const [activeTopic, setActiveTopic] = useState(null)
   const [activeLesson, setActiveLesson] = useState(null)
+  const [practiceQuestionId, setPracticeQuestionId] = useState(null)
   const [exam, setExam] = useState(null)
   const [examResult, setExamResult] = useState(null)
   const [examAnswers, setExamAnswers] = useState({})
@@ -142,14 +151,16 @@ function App() {
   const examSubmittingRef = useRef(false)
   const copy = (key) => t(language, key)
   const loadOverview = useCallback(async (accessToken) => {
-    const [subjectData, examData, progressData] = await Promise.all([
+    const [subjectData, examData, progressData, bookmarkData] = await Promise.all([
       api(`/subjects?lang=${language}`, { token: accessToken }),
       api(`/exams?lang=${language}`, { token: accessToken }),
       api(`/progress?lang=${language}`, { token: accessToken }),
+      api(`/bookmarks?lang=${language}`, { token: accessToken }),
     ])
     setSubjects(subjectData.subjects)
     setExams(examData.exams)
     setProgress(progressData)
+    setBookmarkIds(bookmarkData.bookmarks.map((bookmark) => `${bookmark.type}:${bookmark.id}`))
   }, [language])
 
   useEffect(() => {
@@ -213,7 +224,20 @@ function App() {
     if (!token || !exam || examResult) return
     let active = true
     api(`/exams/${exam.id}?lang=${language}`, { token })
-      .then((data) => { if (active) setExam({ ...data.exam, questions: data.questions }) })
+      .then((data) => {
+        if (!active) return
+        setExam((current) => {
+          if (!current || current.id !== data.exam.id) return { ...data.exam, questions: data.questions }
+          const translated = new Map(data.questions.map((question) => [question.id, question]))
+          return {
+            ...data.exam,
+            questions: current.questions.map((question) => ({
+              ...(translated.get(question.id) || question),
+              option_order: question.option_order,
+            })),
+          }
+        })
+      })
       .catch((requestError) => { if (active) setError(requestError.message) })
     return () => { active = false }
   // Language changes update question text while preserving the student's selected answers and timer.
@@ -254,6 +278,39 @@ function App() {
       setSection('lesson')
       setMobileMenu(false)
     } catch (requestError) { setError(requestError.message) }
+  }
+
+  async function toggleBookmark(type, id, saved) {
+    if (saved) {
+      await api(`/bookmarks/${type}/${id}`, { token, method: 'DELETE' })
+      setBookmarkIds((current) => current.filter((key) => key !== `${type}:${id}`))
+    } else {
+      await api('/bookmarks', { token, method: 'POST', body: JSON.stringify({ type, id }) })
+      setBookmarkIds((current) => current.includes(`${type}:${id}`) ? current : [...current, `${type}:${id}`])
+    }
+  }
+
+  function openTopic(topicId) {
+    const target = subjects.flatMap((subject) => subject.topics || []).find((topic) => topic.id === topicId)
+    if (!target) {
+      setError(copy('topicNotFound'))
+      return
+    }
+    setActiveTopic(target)
+    setTopicData(null)
+    navigate('subjects')
+  }
+
+  function openQuestion(topicId, questionId) {
+    const target = subjects.flatMap((subject) => subject.topics || []).find((topic) => topic.id === topicId)
+    if (!target) {
+      setError(copy('topicNotFound'))
+      return
+    }
+    setPracticeQuestionId(questionId)
+    setActiveTopic(target)
+    setTopicData(null)
+    navigate('practice')
   }
 
   async function completeLesson() {
@@ -333,7 +390,7 @@ function App() {
         <div className="sidebar-caption">{copy('spaceTagline')}</div>
         <nav className="sidebar-nav" aria-label={copy('mainNavigation')}>
           {nav.map((item) => {
-            const Icon = item === 'home' ? Sparkles : item === 'subjects' ? GraduationCap : item === 'practice' ? CircleHelp : item === 'exams' ? Clock3 : item === 'resources' ? Download : item === 'progress' ? Award : item === 'admin' ? Plus : BookOpen
+            const Icon = item === 'home' ? Sparkles : item === 'subjects' ? GraduationCap : item === 'practice' ? CircleHelp : item === 'exams' ? Clock3 : item === 'resources' ? Download : item === 'search' ? Search : item === 'bookmarks' ? BookOpen : item === 'askTeacher' ? MessageCircle : item === 'progress' ? Award : item === 'admin' ? Plus : BookOpen
             return <button key={item} className={`nav-link ${section === item ? 'nav-active' : ''}`} onClick={() => navigate(item)}><Icon size={17} /><span>{copy(item)}</span>{section === item && <span className="nav-indicator" />}</button>
           })}
         </nav>
@@ -351,18 +408,23 @@ function App() {
         <div className="content-wrap">
           {error && <div className="notice notice-error top-notice" role="alert">{error}<button onClick={() => setError('')} aria-label="Dismiss"><X size={16} /></button></div>}
           {loading && <div className="inline-loading"><span className="loading-dot" /> {copy('loading')}</div>}
+          <Suspense fallback={<div className="inline-loading"><span className="loading-dot" /> {copy('loading')}</div>}>
           {section === 'home' && <HomePage subjects={subjects} progress={progress} language={language} onOpenSubject={(subject) => { setActiveTopic(subject.topics?.[0] || null); navigate('subjects') }} onNavigate={navigate} />}
           {section === 'subjects' && <SubjectsPage subjects={subjects} language={language} activeTopic={activeTopic} topicData={topicData} onTopic={(topic) => { setActiveTopic(topic); setTopicData(null) }} onLesson={openLesson} onPractice={() => navigate('practice')} />}
-          {section === 'lesson' && activeLesson && <LessonPage lesson={activeLesson} language={language} onBack={() => navigate('subjects')} onComplete={completeLesson} />}
-          {section === 'practice' && <PracticePage subjects={subjects} topic={activeTopic || subjects[0]?.topics?.[0]} onTopic={setActiveTopic} topicData={topicData} language={language} token={token} />}
+          {section === 'lesson' && activeLesson && <LessonPage lesson={activeLesson} language={language} token={token} saved={bookmarkIds.includes(`lesson:${activeLesson.id}`)} onToggleBookmark={toggleBookmark} onBack={() => navigate('subjects')} onComplete={completeLesson} />}
+          {section === 'practice' && <PracticePage subjects={subjects} topic={activeTopic || subjects[0]?.topics?.[0]} onTopic={setActiveTopic} topicData={topicData} language={language} token={token} initialQuestionId={practiceQuestionId} onQuestionOpened={() => setPracticeQuestionId(null)} bookmarkIds={bookmarkIds} onToggleBookmark={toggleBookmark} />}
           {section === 'exams' && <ExamsPage exams={exams} language={language} onStart={startExam} />}
           {section === 'exam' && exam && !examResult && <ExamPage exam={exam} answers={examAnswers} setAnswers={setExamAnswers} index={examIndex} setIndex={setExamIndex} secondsLeft={secondsLeft} onSubmit={submitExam} submitting={examSubmitting} language={language} />}
           {section === 'exam' && examResult && <ExamResult result={examResult} language={language} onAgain={() => { setExam(null); navigate('exams') }} />}
           {section === 'resources' && <ResourcesPage token={token} language={language} subjects={subjects} />}
+          {section === 'search' && <SearchPage language={language} token={token} onOpenTopic={openTopic} onOpenLesson={openLesson} onOpenQuestion={openQuestion} />}
+          {section === 'bookmarks' && <BookmarksPage language={language} token={token} onToggle={toggleBookmark} onOpenLesson={openLesson} onOpenQuestion={openQuestion} />}
+          {section === 'askTeacher' && <SupportPage language={language} token={token} subjects={subjects} />}
           {section === 'progress' && <ProgressPage progress={progress} subjects={subjects} language={language} />}
           {section === 'admin' && isAdmin && <AdminPage subjects={subjects} exams={exams} token={token} language={language} onChanged={() => { loadOverview(token); setToast(copy('contentSaved')) }} />}
-          {!['home', 'subjects', 'lesson', 'practice', 'exams', 'exam', 'resources', 'progress', 'admin'].includes(section) && <HomePage subjects={subjects} progress={progress} language={language} onOpenSubject={(subject) => { setActiveTopic(subject.topics?.[0] || null); navigate('subjects') }} onNavigate={navigate} />}
-          <footer className="page-footer"><span>© {new Date().getFullYear()} {copy('footer')}</span><span>{copy('welcome')}</span></footer>
+          {!['home', 'subjects', 'lesson', 'practice', 'exams', 'exam', 'resources', 'search', 'bookmarks', 'askTeacher', 'progress', 'admin'].includes(section) && <HomePage subjects={subjects} progress={progress} language={language} onOpenSubject={(subject) => { setActiveTopic(subject.topics?.[0] || null); navigate('subjects') }} onNavigate={navigate} />}
+          </Suspense>
+          <footer className="page-footer"><span>© {new Date().getFullYear()} {copy('footer')}</span><DeveloperContact language={language} /></footer>
         </div>
       </main>
       {toast && <div className="toast"><CheckCircle2 size={17} />{toast}</div>}
@@ -372,6 +434,13 @@ function App() {
 
 function SetupScreen({ language, onLanguage }) {
   return <main className="setup-screen"><div className="setup-card"><div className="brand"><span className="brand-mark"><BookOpen size={19} /></span><span>iki<span>rezi</span></span></div><div className="setup-art"><Sparkles size={27} /></div><h1>{t(language, 'setupMissing')}</h1><p>{t(language, 'setupDetails')}</p><LanguageSelect language={language} onChange={onLanguage} /></div></main>
+}
+
+function DeveloperContact({ language }) {
+  return <div className="developer-contact"><span>{t(language, 'developedBy')} <b>NSHIMIYIMANA Yves</b></span>
+    <a href={`tel:${developerPhone}`}><Phone size={13} />{developerPhone}</a>
+    <a href={`https://wa.me/${developerPhone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer"><MessageCircle size={13} />WhatsApp</a>
+  </div>
 }
 
 function HomePage({ subjects, progress, language, onOpenSubject, onNavigate }) {
@@ -431,21 +500,57 @@ function SubjectsPage({ subjects, language, activeTopic, topicData, onTopic, onL
   )
 }
 
-function LessonPage({ lesson, language, onBack, onComplete }) {
+function LessonPage({ lesson, language, token, saved, onToggleBookmark, onBack, onComplete }) {
   const isImage = /\.(png|jpe?g|gif|webp|svg|avif)(?:[?#]|$)/i.test(lesson.media_url || '')
-  return <section className="lesson-page"><button className="back-link" onClick={onBack}><ArrowLeft size={16} />{t(language, 'back')}</button><div className="lesson-cover"><span className="lesson-cover-icon"><BookOpen size={23} /></span><span className="section-kicker">{t(language, 'subjects')}</span><h1>{lesson.title}</h1><p>{lesson.summary}</p></div><article className="lesson-article"><div className="lesson-article-content">{lesson.content?.split('\n').map((paragraph, index) => paragraph ? <p key={index}>{paragraph}</p> : <br key={index} />)}</div>{isImage && <img className="lesson-image" src={lesson.media_url} alt={lesson.title} loading="lazy" />}{lesson.media_url && !isImage && <a className="video-link" href={lesson.media_url} target="_blank" rel="noreferrer"><Play size={16} />{t(language, 'video')}<ArrowRight size={15} /></a>}<button className={`button ${lesson.completed ? 'button-completed' : 'button-primary'}`} disabled={lesson.completed} onClick={onComplete}>{lesson.completed ? <Check size={16} /> : <CheckCircle2 size={16} />}{lesson.completed ? t(language, 'completedLabel') : t(language, 'markComplete')}</button></article></section>
+  return <section className="lesson-page"><button className="back-link" onClick={onBack}><ArrowLeft size={16} />{t(language, 'back')}</button><div className="lesson-cover"><span className="lesson-cover-icon"><BookOpen size={23} /></span><span className="section-kicker">{t(language, 'subjects')}</span><h1>{lesson.title}</h1><p>{lesson.summary}</p></div><article className="lesson-article"><div className="lesson-article-actions"><BookmarkButton type="lesson" id={lesson.id} saved={saved} token={token} language={language} onToggle={onToggleBookmark} /></div><div className="lesson-article-content">{lesson.content?.split('\n').map((paragraph, index) => paragraph ? <p key={index}>{paragraph}</p> : <br key={index} />)}</div>{isImage && <img className="lesson-image" src={lesson.media_url} alt={lesson.title} loading="lazy" />}{lesson.media_url && !isImage && <a className="video-link" href={lesson.media_url} target="_blank" rel="noreferrer"><Play size={16} />{t(language, 'video')}<ArrowRight size={15} /></a>}<button className={`button ${lesson.completed ? 'button-completed' : 'button-primary'}`} disabled={lesson.completed} onClick={onComplete}>{lesson.completed ? <Check size={16} /> : <CheckCircle2 size={16} />}{lesson.completed ? t(language, 'completedLabel') : t(language, 'markComplete')}</button></article></section>
 }
 
-function PracticePage({ subjects, topic, onTopic, topicData, language, token }) {
+function PracticePage({ subjects, topic, onTopic, topicData, language, token, initialQuestionId, onQuestionOpened, bookmarkIds, onToggleBookmark }) {
   const [index, setIndex] = useState(0)
   const [choice, setChoice] = useState('')
   const [result, setResult] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [retryWrong, setRetryWrong] = useState(false)
+  const [wrongQuestions, setWrongQuestions] = useState([])
+  const [wrongLoaded, setWrongLoaded] = useState(false)
+  const [wrongLoading, setWrongLoading] = useState(false)
+  const [wrongError, setWrongError] = useState('')
   const topics = subjects.flatMap((subject) => subject.topics || [])
   const currentTopic = topics.find((item) => item.id === topic?.id) || topics[0]
-  const questions = topicData?.topic?.id === currentTopic?.id ? topicData.exercises : []
-  useEffect(() => { setIndex(0); setChoice(''); setResult(null) }, [currentTopic?.id, questions.length])
+  const topicQuestions = topicData?.topic?.id === currentTopic?.id ? topicData.exercises : []
+  const questions = retryWrong ? wrongQuestions : topicQuestions
+  useEffect(() => { setIndex(0); setChoice(''); setResult(null) }, [currentTopic?.id, retryWrong, questions.length])
+  useEffect(() => {
+    if (!initialQuestionId || retryWrong || !topicQuestions.length) return
+    const targetIndex = topicQuestions.findIndex((item) => item.id === initialQuestionId)
+    if (targetIndex >= 0) {
+      setIndex(targetIndex)
+      onQuestionOpened()
+    }
+  }, [initialQuestionId, onQuestionOpened, retryWrong, topicQuestions])
   const question = questions[index]
+
+  async function toggleRetry() {
+    setWrongError('')
+    if (retryWrong) {
+      setRetryWrong(false)
+      return
+    }
+    if (!wrongLoaded) {
+      setWrongLoading(true)
+      try {
+        const data = await api(`/questions/wrong?lang=${language}`, { token })
+        setWrongQuestions(data.questions)
+        setWrongLoaded(true)
+      } catch (requestError) {
+        setWrongError(requestError.message)
+        setWrongLoading(false)
+        return
+      }
+      setWrongLoading(false)
+    }
+    setRetryWrong(true)
+  }
 
   async function check() {
     if (!choice || !question) return
@@ -453,16 +558,32 @@ function PracticePage({ subjects, topic, onTopic, topicData, language, token }) 
     try {
       const answer = await api(`/questions/${question.id}/check`, { token, method: 'POST', body: JSON.stringify({ answer: choice, language }) })
       setResult(answer)
+      if (!retryWrong) setWrongLoaded(false)
     } catch (error) { setResult({ error: error.message }) }
     finally { setBusy(false) }
   }
 
+  function nextQuestion() {
+    if (retryWrong && result?.correct) {
+      setWrongQuestions((current) => current.filter((item) => item.id !== question.id))
+      setIndex(0)
+    } else {
+      setIndex((current) => (current + 1) % questions.length)
+    }
+    setChoice('')
+    setResult(null)
+  }
+
   return <><PageHeading eyebrow={t(language, 'practiceMoment')} title={t(language, 'practiceTitle')} description={t(language, 'chooseAnswer')} />
     <div className="practice-wrap">
-      <div className="practice-topic-picker"><span>{t(language, 'selectTopic')}</span><select value={currentTopic?.id || ''} onChange={(event) => { const selected = topics.find((item) => item.id === event.target.value); if (selected) onTopic(selected) }}><option value="" disabled>{t(language, 'selectTopic')}</option>{subjects.flatMap((subject) => subject.topics || []).map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></div>
-      {!question ? <div className="empty-card practice-empty"><CircleHelp size={25} /><h3>{t(language, 'noQuestions')}</h3></div> : <div className="question-card"><div className="question-card-top"><span className="question-chip">{t(language, 'question')} {index + 1} {t(language, 'of')} {questions.length}</span><span className="section-kicker">{currentTopic?.title}</span></div><h2>{question.prompt}</h2><div className="answer-options">{Object.entries(question.options).map(([key, value]) => <button key={key} disabled={Boolean(result)} className={`answer-option ${choice === key ? 'answer-selected' : ''} ${result && key === result.answer ? 'answer-correct' : ''} ${result && choice === key && !result.correct ? 'answer-wrong' : ''}`} onClick={() => setChoice(key)}><span className="choice-letter">{key}</span><span>{value}</span>{result && key === result.answer && <Check size={17} />}</button>)}</div>
+      <div className="practice-tools-row">
+        {!retryWrong && <div className="practice-topic-picker"><span>{t(language, 'selectTopic')}</span><select value={currentTopic?.id || ''} onChange={(event) => { const selected = topics.find((item) => item.id === event.target.value); if (selected) onTopic(selected) }}><option value="" disabled>{t(language, 'selectTopic')}</option>{topics.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></div>}
+        <button className={`button ${retryWrong ? 'button-completed' : 'button-outline'}`} onClick={toggleRetry} disabled={wrongLoading}>{wrongLoading ? t(language, 'loading') : <><RotateCcw size={15} />{t(language, retryWrong ? 'allPractice' : 'retryWrong')}</>}</button>
+      </div>
+      {wrongError && <div className="notice notice-error" role="alert">{wrongError}</div>}
+      {!question ? <div className="empty-card practice-empty"><CircleHelp size={25} /><h3>{retryWrong ? t(language, 'noWrongAnswers') : t(language, 'noQuestions')}</h3></div> : <div className="question-card"><div className="question-card-top"><span className="question-chip">{t(language, 'question')} {index + 1} {t(language, 'of')} {questions.length}</span><span className="section-kicker">{retryWrong ? question.topic : currentTopic?.title}</span><BookmarkButton type="question" id={question.id} saved={bookmarkIds.includes(`question:${question.id}`)} token={token} language={language} onToggle={onToggleBookmark} /></div><h2>{question.prompt}</h2><div className="answer-options">{Object.entries(question.options).map(([key, value]) => <button key={key} disabled={Boolean(result)} className={`answer-option ${choice === key ? 'answer-selected' : ''} ${result && key === result.answer ? 'answer-correct' : ''} ${result && choice === key && !result.correct ? 'answer-wrong' : ''}`} onClick={() => setChoice(key)}><span className="choice-letter">{key}</span><span>{value}</span>{result && key === result.answer && <Check size={17} />}</button>)}</div>
         {result && <div className={`answer-feedback ${result.correct ? 'feedback-correct' : 'feedback-wrong'}`}><b>{result.error || (result.correct ? t(language, 'correct') : t(language, 'incorrect'))}</b>{result.error ? null : <p>{result.explanation}</p>}</div>}
-        <div className="question-footer">{result ? <button className="button button-primary" onClick={() => { setIndex((index + 1) % questions.length); setChoice(''); setResult(null) }}>{t(language, 'next')}<ArrowRight size={16} /></button> : <button className="button button-primary" disabled={!choice || busy} onClick={check}>{busy ? '…' : t(language, 'check')}<Check size={15} /></button>}</div>
+        <div className="question-footer">{result ? <button className="button button-primary" onClick={nextQuestion}>{t(language, 'next')}<ArrowRight size={16} /></button> : <button className="button button-primary" disabled={!choice || busy} onClick={check}>{busy ? '…' : t(language, 'check')}<Check size={15} /></button>}</div>
       </div>}
     </div>
   </>
@@ -475,7 +596,7 @@ function ExamsPage({ exams, language, onStart }) {
 function ExamPage({ exam, answers, setAnswers, index, setIndex, secondsLeft, onSubmit, submitting, language }) {
   const question = exam.questions[index]
   const time = `${String(Math.floor(secondsLeft / 60)).padStart(2, '0')}:${String(secondsLeft % 60).padStart(2, '0')}`
-  return <section className="exam-taking"><div className="exam-taking-head"><div><span className="section-kicker">{exam.title}</span><h1>{t(language, 'question')} {index + 1} <span>{t(language, 'of')} {exam.questions.length}</span></h1></div><div className={`timer-pill ${secondsLeft < 60 ? 'timer-warning' : ''}`}><Clock3 size={17} /><span>{t(language, 'timeLeft')}</span><b>{time}</b></div></div><div className="exam-progress-track"><span style={{ width: `${((index + 1) / exam.questions.length) * 100}%` }} /></div><article className="question-card exam-question-card"><div className="question-card-top"><span className="question-chip">{index + 1}/{exam.questions.length}</span><span className="section-kicker">{exam.description}</span></div><h2>{question.prompt}</h2><div className="answer-options">{Object.entries(question.options).map(([key, value]) => <button key={key} className={`answer-option ${answers[question.id] === key ? 'answer-selected' : ''}`} onClick={() => setAnswers({ ...answers, [question.id]: key })}><span className="choice-letter">{key}</span><span>{value}</span></button>)}</div></article><div className="exam-controls"><button className="button button-outline" disabled={index === 0} onClick={() => setIndex(index - 1)}><ArrowLeft size={15} />{t(language, 'previous')}</button><span>{Object.keys(answers).length}/{exam.questions.length} {t(language, 'answered')}</span>{index < exam.questions.length - 1 ? <button className="button button-primary" onClick={() => setIndex(index + 1)}>{t(language, 'next')}<ArrowRight size={15} /></button> : <button className="button button-primary" disabled={submitting} onClick={onSubmit}>{submitting ? '…' : t(language, 'submitExam')}<Check size={15} /></button>}</div></section>
+  return <section className="exam-taking"><div className="exam-taking-head"><div><span className="section-kicker">{exam.title}</span><h1>{t(language, 'question')} {index + 1} <span>{t(language, 'of')} {exam.questions.length}</span></h1></div><div className={`timer-pill ${secondsLeft < 60 ? 'timer-warning' : ''}`}><Clock3 size={17} /><span>{t(language, 'timeLeft')}</span><b>{time}</b></div></div><div className="exam-progress-track"><span style={{ width: `${((index + 1) / exam.questions.length) * 100}%` }} /></div><article className="question-card exam-question-card"><div className="question-card-top"><span className="question-chip">{index + 1}/{exam.questions.length}</span><span className="section-kicker">{exam.description}</span></div><h2>{question.prompt}</h2><div className="answer-options">{(question.option_order || Object.keys(question.options)).map((key) => <button key={key} className={`answer-option ${answers[question.id] === key ? 'answer-selected' : ''}`} onClick={() => setAnswers({ ...answers, [question.id]: key })}><span className="choice-letter">{key}</span><span>{question.options[key]}</span></button>)}</div></article><div className="exam-controls"><button className="button button-outline" disabled={index === 0} onClick={() => setIndex(index - 1)}><ArrowLeft size={15} />{t(language, 'previous')}</button><span>{Object.keys(answers).length}/{exam.questions.length} {t(language, 'answered')}</span>{index < exam.questions.length - 1 ? <button className="button button-primary" onClick={() => setIndex(index + 1)}>{t(language, 'next')}<ArrowRight size={15} /></button> : <button className="button button-primary" disabled={submitting} onClick={onSubmit}>{submitting ? '…' : t(language, 'submitExam')}<Check size={15} /></button>}</div></section>
 }
 
 function ExamResult({ result, language, onAgain }) {
@@ -579,8 +700,9 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
       <button className={kind === 'lesson' ? 'selected' : ''} onClick={() => { setKind('lesson'); setEditing(null) }}><BookOpen size={16} />{copy('lessons')} ({lessons.length})</button>
       <button className={kind === 'question' ? 'selected' : ''} onClick={() => { setKind('question'); setEditing(null) }}><CircleHelp size={16} />{copy('practice')} ({questions.length})</button>
       <button className={kind === 'resources' ? 'selected' : ''} onClick={() => { setKind('resources'); setEditing(null) }}><Download size={16} />{copy('resources')}</button>
+      <button className={kind === 'support' ? 'selected' : ''} onClick={() => { setKind('support'); setEditing(null) }}><MessageCircle size={16} />{copy('supportInbox')}</button>
     </div>
-    {kind === 'resources' ? <AdminResourcesPage token={token} language={language} subjects={subjects} onChanged={onChanged} /> : <>
+    {kind === 'resources' ? <AdminResourcesPage token={token} language={language} subjects={subjects} onChanged={onChanged} /> : kind === 'support' ? <AdminSupportRequests token={token} language={language} /> : <>
       {error && <div className="notice notice-error">{error}</div>}
       <div className="admin-layout">
         <section className="panel admin-list">

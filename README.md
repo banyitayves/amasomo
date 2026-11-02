@@ -8,10 +8,13 @@ A mobile-friendly multilingual learning website built with React, Vite, Tailwind
 - Subjects, topics, translated text lessons, image links, and video links
 - Practice questions with immediate grading and explanations
 - Timed exams, server-side grading, scores, and answer-by-answer review
+- Search across topics, lessons, and practice questions; retry missed answers and shuffle exam questions and choices
+- Personal bookmarks, student-to-teacher support requests, and an administrator request inbox
 - Saved lesson completions, past results, subject progress, and weak-topic insights
 - Admin-only lesson and question create, edit, and delete tools
 - A multilingual resource library for notes, past papers, exercises, and exams, with private storage and student downloads
-- Responsive layouts for phones, tablets, and desktop
+- Responsive, low-data layouts for phones, tablets, and desktop; lesson images load lazily and use system fonts
+- Developer contact details displayed before sign-in and throughout the learning space
 
 ## Requirements
 
@@ -23,8 +26,9 @@ A mobile-friendly multilingual learning website built with React, Vite, Tailwind
 1. Create a Supabase project and open **SQL Editor**.
 2. Run `backend/schema.sql`, followed by `backend/seed.sql`. This creates the tables and translated starter lessons, practice questions, and exam.
 3. Run `backend/resources.sql`. This creates the resource metadata table and private Supabase Storage bucket. It supports PDF, Office, image, and text files up to 50 MB.
-4. In **Authentication → URL Configuration**, add `http://localhost:5173` to the allowed redirect URLs. Add your production website URL when deploying.
-5. In **Project Settings → API**, copy the project URL, the publishable/anon key, and the `service_role` secret. The service-role secret is backend-only and must never be added to a `VITE_` variable or committed to source control.
+4. Run `backend/study-tools.sql`. This adds private teacher requests, per-student bookmarks and missed-answer tracking, and migrates existing exam mistakes into retry practice.
+5. In **Authentication → URL Configuration**, add `http://localhost:5173` to the allowed redirect URLs. Add your production website URL when deploying.
+6. In **Project Settings → API**, copy the project URL, the publishable/anon key, and the `service_role` secret. The service-role secret is backend-only and must never be added to a `VITE_` variable or committed to source control.
 
 Tables have row-level security enabled. The browser only uses Supabase Auth; the Express API verifies each Supabase access token and accesses content with the server-only service role. Answer keys are not returned to students before exercise checks or exam submission. Admin access is determined on the server by an exact match to `ADMIN_EMAIL`.
 
@@ -54,7 +58,9 @@ FRONTEND_ORIGIN=http://localhost:5173
 
 Open <http://localhost:5173>. Create your account using the email in `ADMIN_EMAIL` to get the content-management page; other accounts are students. If Supabase email confirmation is enabled, confirm the signup email before signing in.
 
-Use the language selector to switch between Kinyarwanda, English, Kiswahili, and French. The admin editor requires the title, summary/notes, question, answers, and explanation to be entered in all four languages.
+Use the language selector to switch between Kinyarwanda, English, Kiswahili, and French. The admin editor requires the title, summary/notes, question, answers, and explanation to be entered in all four languages. Students can search the translated topics, notes, and practice questions, bookmark lessons and questions, and request private teacher support. The administrator's **Manage content → Teacher requests** tab includes the student's email/phone and lets you update request status.
+
+To brand signup confirmation emails, edit the confirmation subject and body under **Authentication → Email Templates → Confirm signup** in Supabase; the body can say “Amasomo Meza” and should retain Supabase's `{{ .ConfirmationURL }}` link. The default Supabase sender identity cannot be renamed by application code. A custom From name/address requires configuring a custom SMTP provider in Supabase **Authentication → SMTP Settings** and verifying the sending domain.
 
 ## Production
 

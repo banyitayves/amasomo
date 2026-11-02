@@ -46,6 +46,19 @@ function localized(value, language) {
   return value?.[language] ?? value?.en ?? ''
 }
 
+function normalizeSearchText(value) {
+  return String(value || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLocaleLowerCase()
+}
+
+function shuffle(items) {
+  const result = [...items]
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1))
+    ;[result[index], result[swapIndex]] = [result[swapIndex], result[index]]
+  }
+  return result
+}
+
 function requireText(value, label, max = 5000) {
   if (typeof value !== 'string' || !value.trim() || value.length > max) {
     fail(400, `${label} is required and must be under ${max} characters.`)
@@ -170,6 +183,156 @@ app.get('/api/subjects', async (req, res) => {
   })) })
 })
 
+app.get('/api/search', async (req, res) => {
+  const language = ['rw', 'en', 'sw', 'fr'].includes(req.query.lang) ? req.query.lang : 'en'
+  const query = typeof req.query.q === 'string' ? req.query.q.trim().slice(0, 100) : ''
+  if (query.length < 2) return res.json({ results: [] })
+  const terms = normalizeSearchText(query).split(/\s+/).filter(Boolean)
+  const [topics, lessons, questions] = await Promise.all([
+    run(supabase.from('topics').select('id,title,description,subjects(name)').limit(500)),
+    run(supabase.from('lessons').select('id,topic_id,title,summary,topics(title,subjects(name))').limit(500)),
+    run(supabase.from('questions').select('id,topic_id,prompt,topics(title,subjects(name))').eq('question_type', 'exercise').limit(500)),
+  ])
+  const matches = (values) => terms.every((term) => normalizeSearchText(values.join(' ')).includes(term))
+  const results = [
+    ...topics.filter((topic) => matches([localized(topic.title, language), localized(topic.description, language), localized(topic.subjects?.name, language)]))
+      .map((topic) => ({ type: 'topic', id: topic.id, title: localized(topic.title, language), subject: localized(topic.subjects?.name, language) })),
+    ...lessons.filter((lesson) => matches([localized(lesson.title, language), localized(lesson.summary, language), localized(lesson.topics?.title, language), localized(lesson.topics?.subjects?.name, language)]))
+      .map((lesson) => ({ type: 'lesson', id: lesson.id, title: localized(lesson.title, language), topic_id: lesson.topic_id, topic: localized(lesson.topics?.title, language), subject: localized(lesson.topics?.subjects?.name, language) })),
+    ...questions.filter((question) => matches([localized(question.prompt, language), localized(question.topics?.title, language), localized(question.topics?.subjects?.name, language)]))
+      .map((question) => ({ type: 'question', id: question.id, title: localized(question.prompt, language), topic_id: question.topic_id, topic: localized(question.topics?.title, language), subject: localized(question.topics?.subjects?.name, language) })),
+  ]
+  res.json({ results: results.slice(0, 30) })
+})
+
+app.get('/api/bookmarks', async (req, res) => {
+  const language = ['rw', 'en', 'sw', 'fr'].includes(req.query.lang) ? req.query.lang : 'en'
+  const rows = await run(supabase.from('learning_bookmarks').select('lesson_id,question_id,created_at')
+    .eq('user_id', req.user.id).order('created_at', { ascending: false }))
+  const lessonIds = rows.map((row) => row.lesson_id).filter(Boolean)
+  const questionIds = rows.map((row) => row.question_id).filter(Boolean)
+  const [lessons, questions] = await Promise.all([
+    lessonIds.length ? run(supabase.from('lessons')
+      .select('id,topic_id,title,summary,topics(title,subjects(name))').in('id', lessonIds)) : [],
+    questionIds.length ? run(supabase.from('questions')
+      .select('id,topic_id,prompt,topics(title,subjects(name))').in('id', questionIds)) : [],
+  ])
+  const lessonById = new Map(lessons.map((lesson) => [lesson.id, lesson]))
+  const questionById = new Map(questions.map((question) => [question.id, question]))
+  const bookmarks = rows.flatMap((row) => {
+    if (row.lesson_id) {
+      const lesson = lessonById.get(row.lesson_id)
+      return lesson ? [{
+        type: 'lesson', id: lesson.id, title: localized(lesson.title, language),
+        detail: localized(lesson.summary, language), topic_id: lesson.topic_id,
+        topic: localized(lesson.topics?.title, language), subject: localized(lesson.topics?.subjects?.name, language),
+      }] : []
+    }
+    const question = questionById.get(row.question_id)
+    return question ? [{
+      type: 'question', id: question.id, title: localized(question.prompt, language),
+      detail: '', topic_id: question.topic_id,
+      topic: localized(question.topics?.title, language), subject: localized(question.topics?.subjects?.name, language),
+    }] : []
+  })
+  res.json({ bookmarks })
+})
+
+app.post('/api/bookmarks', async (req, res) => {
+  const { type, id } = req.body
+  if (!['lesson', 'question'].includes(type)) fail(400, 'Choose a lesson or question to bookmark.')
+  const table = type === 'lesson' ? 'lessons' : 'questions'
+  const target = await run(supabase.from(table).select('id').eq('id', requireText(id, 'Item ID', 36)).maybeSingle())
+  if (!target) return res.status(404).json({ error: 'The item to bookmark was not found.' })
+  const row = { user_id: req.user.id, lesson_id: type === 'lesson' ? id : null, question_id: type === 'question' ? id : null }
+  await run(supabase.from('learning_bookmarks').upsert(row, { onConflict: type === 'lesson' ? 'user_id,lesson_id' : 'user_id,question_id' }))
+  res.status(201).json({ bookmarked: true })
+})
+
+app.delete('/api/bookmarks/:type/:id', async (req, res) => {
+  if (!['lesson', 'question'].includes(req.params.type)) fail(400, 'Choose a lesson or question to remove.')
+  const targetColumn = req.params.type === 'lesson' ? 'lesson_id' : 'question_id'
+  await run(supabase.from('learning_bookmarks').delete()
+    .eq('user_id', req.user.id).eq(targetColumn, req.params.id))
+  res.status(204).end()
+})
+
+app.get('/api/questions/wrong', async (req, res) => {
+  const language = ['rw', 'en', 'sw', 'fr'].includes(req.query.lang) ? req.query.lang : 'en'
+  const rows = await run(supabase.from('learning_question_attempts')
+    .select('attempt_count,last_attempted_at,questions(id,topic_id,prompt,options,topics(title))')
+    .eq('user_id', req.user.id).eq('last_correct', false).order('last_attempted_at', { ascending: false }))
+  res.json({ questions: rows.filter((row) => row.questions).map((row) => ({
+    ...row.questions,
+    prompt: localized(row.questions.prompt, language),
+    topic: localized(row.questions.topics?.title, language),
+    options: Object.fromEntries(Object.entries(row.questions.options || {}).map(([key, value]) => [key, localized(value, language)])),
+    attempt_count: row.attempt_count,
+  })) })
+})
+
+app.post('/api/support-requests', async (req, res) => {
+  const contactMethod = req.body.contact_method
+  if (!['email', 'whatsapp', 'phone'].includes(contactMethod)) fail(400, 'Choose how the teacher should contact you.')
+  const phone = req.body.contact_phone ? requireText(req.body.contact_phone, 'Phone number', 20) : ''
+  if (contactMethod !== 'email' && !/^\+[1-9]\d{7,14}$/.test(phone)) {
+    fail(400, 'Enter a phone number with its country code, such as +250791234567.')
+  }
+  let subjectId = null
+  if (req.body.subject_id) {
+    subjectId = requireText(req.body.subject_id, 'Subject', 36)
+    const subject = await run(supabase.from('subjects').select('id').eq('id', subjectId).maybeSingle())
+    if (!subject) fail(400, 'Choose an existing subject.')
+  }
+  const message = requireText(req.body.message, 'Message', 2000)
+  if (message.length < 10) fail(400, 'Write at least 10 characters so the teacher can understand your request.')
+  const { count, error: countError } = await supabase.from('teacher_support_requests').select('id', { count: 'exact', head: true })
+    .eq('user_id', req.user.id).gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+  if (countError) {
+    const failure = new Error(countError.message)
+    failure.status = 400
+    throw failure
+  }
+  if (count >= 5) fail(429, 'You have reached the daily limit for teacher requests. Please wait before sending another one.')
+  const request = await run(supabase.from('teacher_support_requests').insert({
+    user_id: req.user.id,
+    student_email: req.user.email || '',
+    student_name: req.user.user_metadata?.display_name || '',
+    contact_method: contactMethod,
+    contact_phone: contactMethod === 'email' ? null : phone,
+    subject_id: subjectId,
+    message,
+  }).select('id,status,created_at').single())
+  res.status(201).json({ request })
+})
+
+app.get('/api/support-requests', async (req, res) => {
+  const requests = await run(supabase.from('teacher_support_requests')
+    .select('id,user_id,student_email,student_name,contact_method,contact_phone,message,status,created_at,subjects(name)')
+    .eq('user_id', req.user.id).order('created_at', { ascending: false }).limit(50))
+  res.json({ requests: requests.map((request) => ({
+    ...request, subject: localized(request.subjects?.name, req.query.lang || 'en'), subjects: undefined,
+  })) })
+})
+
+app.get('/api/admin/support-requests', requireAdmin, async (req, res) => {
+  const requests = await run(supabase.from('teacher_support_requests')
+    .select('id,user_id,student_email,student_name,contact_method,contact_phone,message,status,created_at,subjects(name)')
+    .order('created_at', { ascending: false }).limit(100))
+  res.json({ requests: requests.map((request) => ({
+    ...request, subject: localized(request.subjects?.name, req.query.lang || 'en'), subjects: undefined,
+  })) })
+})
+
+app.patch('/api/admin/support-requests/:id', requireAdmin, async (req, res) => {
+  if (!['pending', 'contacted', 'resolved'].includes(req.body.status)) fail(400, 'Choose a valid request status.')
+  const request = await run(supabase.from('teacher_support_requests')
+    .update({ status: req.body.status, updated_at: new Date().toISOString() })
+    .eq('id', req.params.id).select('id,status,updated_at').maybeSingle())
+  if (!request) return res.status(404).json({ error: 'Teacher request not found.' })
+  res.json({ request })
+})
+
 app.get('/api/topics/:topicId', async (req, res) => {
   const language = ['rw', 'en', 'sw', 'fr'].includes(req.query.lang) ? req.query.lang : 'en'
   const topic = await run(supabase.from('topics').select('id,title,description,subject_id').eq('id', req.params.topicId).maybeSingle())
@@ -223,11 +386,13 @@ app.post('/api/lessons/:lessonId/complete', async (req, res) => {
 app.post('/api/questions/:questionId/check', async (req, res) => {
   const selected = typeof req.body.answer === 'string' ? req.body.answer : ''
   const question = await run(supabase.from('questions')
-    .select('answer,explanation,options').eq('id', req.params.questionId)
-    .eq('question_type', 'exercise').maybeSingle())
-  if (!question) return res.status(404).json({ error: 'Practice question not found.' })
+    .select('answer,explanation,options').eq('id', req.params.questionId).maybeSingle())
+  if (!question) return res.status(404).json({ error: 'Question not found.' })
   const correct = selected === question.answer
   const language = ['rw', 'en', 'sw', 'fr'].includes(req.body.language) ? req.body.language : 'en'
+  await run(supabase.rpc('record_learning_question_attempt', {
+    p_user_id: req.user.id, p_question_id: req.params.questionId, p_correct: correct,
+  }))
   res.json({
     correct,
     answer: question.answer,
@@ -303,7 +468,7 @@ app.get('/api/exams/:examId', async (req, res) => {
     }))
   res.json({
     exam: { id: exam.id, title: localized(exam.title, language), description: localized(exam.description, language), duration_minutes: exam.duration_minutes },
-    questions,
+    questions: shuffle(questions).map((question) => ({ ...question, option_order: shuffle(Object.keys(question.options)) })),
   })
 })
 
@@ -340,6 +505,9 @@ app.post('/api/exams/:examId/submit', async (req, res) => {
     score_percent: Math.round(score * 100 / review.length),
     review,
   }).select('id').single())
+  await Promise.all(review.map((entry) => run(supabase.rpc('record_learning_question_attempt', {
+    p_user_id: req.user.id, p_question_id: entry.questionId, p_correct: entry.correct,
+  }))))
   res.json({
     attemptId: attempt.id,
     score,
