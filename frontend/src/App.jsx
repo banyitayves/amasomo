@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, Atom, Award, BookOpen, Check, CheckCircle2, ChevronDown, ChevronRight, Eye, EyeOff,
   CircleHelp, Clock3, Compass, Download, FlaskConical, GraduationCap, Leaf, LockKeyhole, LogOut, Menu,
-  MessageCircle, Phone, Play, Plus, RotateCcw, Search, Sparkles, Target, Trash2, X,
+  MessageCircle, Phone, Play, Plus, RotateCcw, Search, Sparkles, Target, Trash2, Upload, X,
 } from 'lucide-react'
 import { api, configured, supabase } from './api.js'
 import { languages, t, text } from './i18n.js'
@@ -621,6 +621,7 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
   const copy = (key) => t(language, key)
   const [kind, setKind] = useState('support')
   const [pendingRequestCount, setPendingRequestCount] = useState(0)
+  const [resourceUploadCategory, setResourceUploadCategory] = useState('notes')
   const [lessons, setLessons] = useState([])
   const [questions, setQuestions] = useState([])
   const [managedExams, setManagedExams] = useState([])
@@ -790,12 +791,12 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
       <button className={kind === 'lesson' ? 'selected' : ''} onClick={() => { setKind('lesson'); setEditing(null) }}><BookOpen size={16} />{copy('lessons')} ({lessons.length})</button>
       <button className={kind === 'question' ? 'selected' : ''} onClick={() => { setKind('question'); setEditing(null) }}><CircleHelp size={16} />{copy('practice')} ({questions.length})</button>
       <button className={kind === 'exams' ? 'selected' : ''} onClick={() => { setKind('exams'); setEditing(null); startNewExam() }}><Clock3 size={16} />{copy('exams')} ({managedExams.length})</button>
-      <button className={kind === 'resources' ? 'selected' : ''} onClick={() => { setKind('resources'); setEditing(null) }}><Download size={16} />{copy('resources')}</button>
+      <button className={kind === 'resources' ? 'selected' : ''} onClick={() => { setKind('resources'); setEditing(null); setResourceUploadCategory('notes') }}><Download size={16} />{copy('resources')}</button>
       <button className={kind === 'support' ? 'selected' : ''} aria-label={`${copy('supportInbox')}: ${pendingRequestCount} ${copy('pending')}`} onClick={() => { setKind('support'); setEditing(null) }}><MessageCircle size={16} />{copy('supportInbox')}<span className="admin-tab-count">{pendingRequestCount}</span></button>
     </div>
-    {kind === 'resources' ? <><div className="exam-admin-guidance"><p>{copy('resourceWorkflow')}</p></div><AdminResourcesPage token={token} language={language} subjects={subjects} onChanged={onChanged} /></> : kind === 'support' ? <AdminSupportRequests token={token} language={language} onPendingCount={setPendingRequestCount} /> : kind === 'exams' ? <>
+    {kind === 'resources' ? <><div className="exam-admin-guidance"><p>{copy('resourceWorkflow')}</p></div><AdminResourcesPage token={token} language={language} subjects={subjects} onChanged={onChanged} initialCategory={resourceUploadCategory} /></> : kind === 'support' ? <AdminSupportRequests token={token} language={language} onPendingCount={setPendingRequestCount} /> : kind === 'exams' ? <>
       {error && <div className="notice notice-error" role="alert">{error}</div>}
-      <div className="exam-admin-guidance"><b>{copy('examWorkflowTitle')}</b><p>{copy('examWorkflow')}</p></div>
+      <div className="exam-admin-guidance"><div className="exam-admin-guidance-heading"><b>{copy('examWorkflowTitle')}</b><button className="button button-outline button-small" onClick={() => { setResourceUploadCategory('exams'); setKind('resources') }}><Upload size={14} />{copy('uploadExamPaper')}</button></div><p>{copy('examWorkflow')}</p></div>
       <div className="admin-layout">
         <section className="panel admin-list">
           <div className="panel-heading"><div><span className="section-kicker">{copy('libraryEyebrow')}</span><h2>{copy('exams')}</h2></div><button className="button button-primary button-small" onClick={startNewExam}><Plus size={15} />{copy('addExam')}</button></div>

@@ -355,6 +355,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .exam-admin-guidance { margin: 0 0 13px; padding: 13px 15px; border: 1px solid #dce8d9; border-radius: 12px; color: #45634b; background: #f0f6ed; }
 .exam-admin-guidance b { font-size: 11px; }
 .exam-admin-guidance p { margin: 5px 0 0; font-size: 10px; line-height: 1.7; }
+.exam-admin-guidance-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .exam-admin-row { display: flex; align-items: center; justify-content: space-between; gap: 11px; padding: 11px 0; border-top: 1px solid #edf0ec; }
 .exam-admin-copy { display: grid; min-width: 0; gap: 4px; }
 .exam-admin-copy > b { color: #47574b; font-size: 10px; }
@@ -442,6 +443,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .content-wrap { padding: 17px 15px 0; }
   .exam-admin-row { flex-wrap: wrap; }
   .exam-admin-actions { flex-wrap: wrap; }
+  .exam-admin-guidance-heading { align-items: flex-start; flex-direction: column; }
   .welcome-banner { min-height: 235px; padding: 23px 20px; }
   .welcome-content { max-width: 75%; }
   .welcome-content h1 { font-size: 31px; }

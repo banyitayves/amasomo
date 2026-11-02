@@ -81,11 +81,11 @@ function ResourceTranslations({ label, value, onChange, multiline = false, requi
     : <input value={value[code] || ''} maxLength={180} required={required} onChange={(event) => onChange(code, event.target.value)} />}</label>)}</div></fieldset>
 }
 
-export function AdminResourcesPage({ token, language, subjects, onChanged }) {
+export function AdminResourcesPage({ token, language, subjects, onChanged, initialCategory = 'notes' }) {
   const [resources, setResources] = useState([])
   const [title, setTitle] = useState(emptyTranslations)
   const [description, setDescription] = useState(emptyTranslations)
-  const [category, setCategory] = useState('notes')
+  const [category, setCategory] = useState(initialCategory)
   const [subjectId, setSubjectId] = useState('')
   const [file, setFile] = useState(null)
   const [editing, setEditing] = useState(null)

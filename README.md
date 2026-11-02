@@ -64,7 +64,8 @@ Use the language selector to switch between Kinyarwanda, English, Kiswahili, and
 
 - Under **Manage content → Practice**, create an exercise for instant feedback or attach a question to an exam. Add the question and four choices in each supported language, select its correct choice, and provide an explanation.
 - Under **Manage content → Exams**, create a draft with its subject and time limit. Use **Add question** on the exam to create and attach questions. Publish it only when its questions are ready; students then see it in **Practice exams** and get a timed score and answer review.
-- Under **Manage content → Study resources**, upload downloadable notes, past papers, exercise sheets, or exam papers. These files are separate from interactive exercises and timed exams.
+- Under **Manage content → Exams**, use **Upload exam paper** to jump to the resource uploader with the exam-paper category selected. Upload downloadable PDF or Office papers (up to 50 MB); students can download them from Study resources. These files are separate from interactive exercises and timed exams.
+- Under **Manage content → Study resources**, upload downloadable notes, past papers, exercise sheets, or other resources.
 
 To brand signup confirmation emails, edit the confirmation subject and body under **Authentication → Email Templates → Confirm signup** in Supabase; the body can say “Amasomo Meza” and should retain Supabase's `{{ .ConfirmationURL }}` link. The default Supabase sender identity cannot be renamed by application code. A custom From name/address requires configuring a custom SMTP provider in Supabase **Authentication → SMTP Settings** and verifying the sending domain.
 
