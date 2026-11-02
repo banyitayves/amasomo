@@ -574,6 +574,80 @@ app.get('/api/admin/lessons', requireAdmin, async (_req, res) => {
   res.json({ lessons })
 })
 
+app.get('/api/admin/exams', requireAdmin, async (_req, res) => {
+  const exams = await run(supabase.from('exams')
+    .select('id,subject_id,title,description,duration_minutes,published,sort_order,subjects(name),exam_questions(question_id)')
+    .order('sort_order').order('created_at', { ascending: false }))
+  res.json({ exams: exams.map((exam) => ({
+    id: exam.id,
+    subject_id: exam.subject_id,
+    subject: exam.subjects?.name,
+    title: exam.title,
+    description: exam.description,
+    duration_minutes: exam.duration_minutes,
+    published: exam.published,
+    sort_order: exam.sort_order,
+    question_count: exam.exam_questions?.length || 0,
+  })) })
+})
+
+app.post('/api/admin/exams', requireAdmin, async (req, res) => {
+  const duration = Number(req.body.duration_minutes)
+  if (!Number.isInteger(duration) || duration < 1 || duration > 240) fail(400, 'Exam duration must be between 1 and 240 minutes.')
+  const published = req.body.published === true
+  if (published) fail(400, 'Add at least one question before publishing this exam.')
+  const exam = await run(supabase.from('exams').insert({
+    subject_id: requireText(req.body.subject_id, 'Subject'),
+    title: requireTranslations(req.body.title, 'Exam title', 180),
+    description: requireTranslations(req.body.description, 'Exam description', 500),
+    duration_minutes: duration,
+    published: false,
+  }).select('id,subject_id,title,description,duration_minutes,published,sort_order').single())
+  res.status(201).json({ exam })
+})
+
+app.put('/api/admin/exams/:id', requireAdmin, async (req, res) => {
+  const changes = {}
+  if (req.body.subject_id) changes.subject_id = requireText(req.body.subject_id, 'Subject')
+  if (req.body.title) changes.title = requireTranslations(req.body.title, 'Exam title', 180)
+  if (req.body.description) changes.description = requireTranslations(req.body.description, 'Exam description', 500)
+  if (req.body.duration_minutes !== undefined) {
+    const duration = Number(req.body.duration_minutes)
+    if (!Number.isInteger(duration) || duration < 1 || duration > 240) fail(400, 'Exam duration must be between 1 and 240 minutes.')
+    changes.duration_minutes = duration
+  }
+  if (req.body.published !== undefined) {
+    if (typeof req.body.published !== 'boolean') fail(400, 'Choose whether this exam is published.')
+    if (req.body.published) {
+      const { count, error } = await supabase.from('exam_questions')
+        .select('question_id', { count: 'exact', head: true }).eq('exam_id', req.params.id)
+      if (error) throw error
+      if (!count) fail(400, 'Add at least one question before publishing this exam.')
+    }
+    changes.published = req.body.published
+  }
+  const exam = await run(supabase.from('exams').update(changes).eq('id', req.params.id)
+    .select('id,subject_id,title,description,duration_minutes,published,sort_order').maybeSingle())
+  if (!exam) return res.status(404).json({ error: 'Exam not found.' })
+  res.json({ exam })
+})
+
+app.delete('/api/admin/exams/:id', requireAdmin, async (req, res) => {
+  const { count, error } = await supabase.from('exam_attempts')
+    .select('id', { count: 'exact', head: true }).eq('exam_id', req.params.id)
+  if (error) throw error
+  if (count) fail(409, 'This exam has student results. Unpublish it to preserve the learning history.')
+  const { count: questionCount, error: questionsError } = await supabase.from('exam_questions')
+    .select('question_id', { count: 'exact', head: true }).eq('exam_id', req.params.id)
+  if (questionsError) throw questionsError
+  if (questionCount) fail(409, 'Remove this exam’s questions before deleting it.')
+  const { data: exam, error: deleteError } = await supabase.from('exams').delete()
+    .eq('id', req.params.id).select('id').maybeSingle()
+  if (deleteError) throw deleteError
+  if (!exam) return res.status(404).json({ error: 'Exam not found.' })
+  res.status(204).end()
+})
+
 app.post('/api/admin/lessons', requireAdmin, async (req, res) => {
   const lesson = {
     topic_id: requireText(req.body.topic_id, 'Topic'),

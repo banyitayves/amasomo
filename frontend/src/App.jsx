@@ -623,7 +623,9 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
   const [pendingRequestCount, setPendingRequestCount] = useState(0)
   const [lessons, setLessons] = useState([])
   const [questions, setQuestions] = useState([])
+  const [managedExams, setManagedExams] = useState([])
   const [editing, setEditing] = useState(null)
+  const [editingExam, setEditingExam] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const topics = subjects.flatMap((subject) => (subject.topics || []).map((topic) => ({ ...topic, subjectName: subject.name })))
@@ -634,13 +636,18 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
     options: Object.fromEntries(['A', 'B', 'C', 'D'].map((key) => [key, emptyTranslations()])),
     answer: 'A', question_type: 'exercise', exam_id: '',
   }))
+  const [examForm, setExamForm] = useState(() => ({
+    subject_id: subjects[0]?.id || '', title: emptyTranslations(), description: emptyTranslations(),
+    duration_minutes: 20, published: false,
+  }))
 
   const reload = useCallback(async () => {
-    const [lessonData, questionData] = await Promise.all([
-      api('/admin/lessons', { token }), api('/admin/questions', { token }),
+    const [lessonData, questionData, examData] = await Promise.all([
+      api('/admin/lessons', { token }), api('/admin/questions', { token }), api('/admin/exams', { token }),
     ])
     setLessons(lessonData.lessons)
     setQuestions(questionData.questions)
+    setManagedExams(examData.exams)
   }, [token])
   useEffect(() => { reload().catch((loadError) => setError(loadError.message)) }, [reload])
 
@@ -664,8 +671,85 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
       topic_id: topics[0]?.id || '', title: emptyTranslations(), summary: emptyTranslations(), content: emptyTranslations(),
       prompt: emptyTranslations(), explanation: emptyTranslations(),
       options: Object.fromEntries(['A', 'B', 'C', 'D'].map((key) => [key, emptyTranslations()])),
-      answer: 'A', question_type: 'exercise', exam_id: exams[0]?.id || '',
+      answer: 'A', question_type: 'exercise', exam_id: managedExams.find((item) => item.published)?.id || '',
     })
+  }
+
+  function startQuestionForExam(examId) {
+    startNew('question')
+    const exam = managedExams.find((item) => item.id === examId)
+    const examTopic = topics.find((topic) => topic.subject_id === exam?.subject_id)
+    setForm((current) => ({
+      ...current,
+      topic_id: examTopic?.id || current.topic_id,
+      question_type: 'exam',
+      exam_id: examId,
+    }))
+  }
+
+  function editExam(exam) {
+    setKind('exams')
+    setEditingExam(exam.id)
+    setEditing(null)
+    setExamForm({
+      subject_id: exam.subject_id, title: exam.title, description: exam.description,
+      duration_minutes: exam.duration_minutes, published: exam.published,
+    })
+  }
+
+  function startNewExam() {
+    setEditingExam(null)
+    setEditing(null)
+    setExamForm({
+      subject_id: subjects[0]?.id || '', title: emptyTranslations(), description: emptyTranslations(),
+      duration_minutes: 20, published: false,
+    })
+  }
+
+  async function saveExam(event) {
+    event.preventDefault()
+    setBusy(true)
+    setError('')
+    try {
+      await api(`/admin/exams${editingExam ? `/${editingExam}` : ''}`, {
+        token, method: editingExam ? 'PUT' : 'POST',
+        body: JSON.stringify({ ...examForm, duration_minutes: Number(examForm.duration_minutes) }),
+      })
+      setEditingExam(null)
+      startNewExam()
+      await reload()
+      onChanged()
+    } catch (saveError) {
+      setError(saveError.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function removeExam(exam) {
+    if (!window.confirm(`${copy('delete')} “${text(exam.title, language)}”?`)) return
+    setError('')
+    try {
+      await api(`/admin/exams/${exam.id}`, { token, method: 'DELETE' })
+      if (editingExam === exam.id) startNewExam()
+      await reload()
+      onChanged()
+    } catch (deleteError) {
+      setError(deleteError.message)
+    }
+  }
+
+  async function toggleExamPublished(exam) {
+    setError('')
+    try {
+      await api(`/admin/exams/${exam.id}`, {
+        token, method: 'PUT', body: JSON.stringify({ published: !exam.published }),
+      })
+      await reload()
+      onChanged()
+    } catch (updateError) {
+      setError(updateError.message)
+    }
   }
 
   function changeTranslation(field, locale, value, option) {
@@ -705,11 +789,43 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
     <div className="admin-tabs">
       <button className={kind === 'lesson' ? 'selected' : ''} onClick={() => { setKind('lesson'); setEditing(null) }}><BookOpen size={16} />{copy('lessons')} ({lessons.length})</button>
       <button className={kind === 'question' ? 'selected' : ''} onClick={() => { setKind('question'); setEditing(null) }}><CircleHelp size={16} />{copy('practice')} ({questions.length})</button>
+      <button className={kind === 'exams' ? 'selected' : ''} onClick={() => { setKind('exams'); setEditing(null); startNewExam() }}><Clock3 size={16} />{copy('exams')} ({managedExams.length})</button>
       <button className={kind === 'resources' ? 'selected' : ''} onClick={() => { setKind('resources'); setEditing(null) }}><Download size={16} />{copy('resources')}</button>
       <button className={kind === 'support' ? 'selected' : ''} aria-label={`${copy('supportInbox')}: ${pendingRequestCount} ${copy('pending')}`} onClick={() => { setKind('support'); setEditing(null) }}><MessageCircle size={16} />{copy('supportInbox')}<span className="admin-tab-count">{pendingRequestCount}</span></button>
     </div>
-    {kind === 'resources' ? <AdminResourcesPage token={token} language={language} subjects={subjects} onChanged={onChanged} /> : kind === 'support' ? <AdminSupportRequests token={token} language={language} onPendingCount={setPendingRequestCount} /> : <>
+    {kind === 'resources' ? <><div className="exam-admin-guidance"><p>{copy('resourceWorkflow')}</p></div><AdminResourcesPage token={token} language={language} subjects={subjects} onChanged={onChanged} /></> : kind === 'support' ? <AdminSupportRequests token={token} language={language} onPendingCount={setPendingRequestCount} /> : kind === 'exams' ? <>
+      {error && <div className="notice notice-error" role="alert">{error}</div>}
+      <div className="exam-admin-guidance"><b>{copy('examWorkflowTitle')}</b><p>{copy('examWorkflow')}</p></div>
+      <div className="admin-layout">
+        <section className="panel admin-list">
+          <div className="panel-heading"><div><span className="section-kicker">{copy('libraryEyebrow')}</span><h2>{copy('exams')}</h2></div><button className="button button-primary button-small" onClick={startNewExam}><Plus size={15} />{copy('addExam')}</button></div>
+          {managedExams.map((item) => <div className="exam-admin-row" key={item.id}>
+            <div className="exam-admin-copy"><b>{text(item.title, language)}</b><small>{text(item.subject, language)} · {item.duration_minutes} {copy('minutesShort')} · {item.question_count} {copy('question').toLowerCase()}</small><span className={`exam-publish-status ${item.published ? 'exam-published' : ''}`}>{copy(item.published ? 'published' : 'draft')}</span></div>
+            <div className="exam-admin-actions">
+              <button className="button button-outline button-small" onClick={() => startQuestionForExam(item.id)}>{copy('addExamQuestion')}</button>
+              <button aria-label={copy('edit')} onClick={() => editExam(item)}><RotateCcw size={15} /></button>
+              <button aria-label={copy(item.published ? 'unpublish' : 'publishExam')} disabled={!item.published && !item.question_count} onClick={() => toggleExamPublished(item)}>{item.published ? <EyeOff size={15} /> : <Check size={15} />}</button>
+              <button aria-label={copy('delete')} onClick={() => removeExam(item)}><Trash2 size={15} /></button>
+            </div>
+          </div>)}
+          {!managedExams.length && <div className="empty-message">{copy('noManagedExams')}</div>}
+        </section>
+        <section className="panel admin-form-panel">
+          <div className="panel-heading"><div><span className="section-kicker">{copy('languageEyebrow')}</span><h2>{editingExam ? copy('editExam') : copy('addExam')}</h2></div>{editingExam && <button className="icon-quiet" onClick={startNewExam} aria-label={copy('cancel')}><X size={17} /></button>}</div>
+          <form className="admin-form" onSubmit={saveExam}>
+            <label className="field-label">{copy('selectSubject')}<select required value={examForm.subject_id} onChange={(event) => setExamForm({ ...examForm, subject_id: event.target.value })}><option value="" disabled>{copy('selectSubject')}</option>{subjects.map((subject) => <option value={subject.id} key={subject.id}>{subject.name}</option>)}</select></label>
+            <TranslationFields label={copy('examTitle')} field="title" value={examForm.title} onChange={(field, locale, value) => setExamForm((current) => ({ ...current, [field]: { ...current[field], [locale]: value } }))} />
+            <TranslationFields label={copy('examDescription')} field="description" value={examForm.description} onChange={(field, locale, value) => setExamForm((current) => ({ ...current, [field]: { ...current[field], [locale]: value } }))} multiline />
+            <label className="field-label">{copy('examDuration')}<input type="number" min="1" max="240" required value={examForm.duration_minutes} onChange={(event) => setExamForm({ ...examForm, duration_minutes: event.target.value })} /></label>
+            {editingExam && <label className="exam-publish-toggle"><input type="checkbox" checked={examForm.published} onChange={(event) => setExamForm({ ...examForm, published: event.target.checked })} />{copy('publishExam')}</label>}
+            {!editingExam && <p className="resource-hint">{copy('newExamDraftHint')}</p>}
+            <button className="button button-primary button-wide" disabled={busy || !subjects.length}>{busy ? '…' : copy('save')}<Check size={15} /></button>
+          </form>
+        </section>
+      </div>
+    </> : <>
       {error && <div className="notice notice-error">{error}</div>}
+      {kind === 'question' && <div className="exam-admin-guidance"><b>{copy('questionWorkflowTitle')}</b><p>{copy('questionWorkflow')}</p></div>}
       <div className="admin-layout">
         <section className="panel admin-list">
           <div className="panel-heading"><div><span className="section-kicker">{copy('libraryEyebrow')}</span><h2>{kind === 'lesson' ? copy('lessons') : copy('practice')}</h2></div><button className="button button-primary button-small" onClick={() => startNew(kind)}><Plus size={15} />{kind === 'lesson' ? copy('addLesson') : copy('addQuestion')}</button></div>
@@ -731,7 +847,7 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
               <label className="field-label">{copy('correctAnswer')}<select value={form.answer || 'A'} onChange={(event) => setForm({ ...form, answer: event.target.value })}>{['A', 'B', 'C', 'D'].map((answer) => <option key={answer}>{answer}</option>)}</select></label>
               <TranslationFields label={copy('explanation')} field="explanation" value={form.explanation} onChange={changeTranslation} multiline />
               <label className="field-label">{copy('questionType')}<select value={form.question_type || 'exercise'} onChange={(event) => setForm({ ...form, question_type: event.target.value })}><option value="exercise">{copy('practice')}</option><option value="exam">{copy('exams')}</option></select></label>
-              {form.question_type === 'exam' && <label className="field-label">{copy('exams')}<select required value={form.exam_id || ''} onChange={(event) => setForm({ ...form, exam_id: event.target.value })}><option value="" disabled>{copy('selectExam')}</option>{exams.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>}
+              {form.question_type === 'exam' && <label className="field-label">{copy('exams')}<select required value={form.exam_id || ''} onChange={(event) => setForm({ ...form, exam_id: event.target.value })}><option value="" disabled>{copy('selectExam')}</option>{managedExams.map((item) => <option value={item.id} key={item.id}>{text(item.title, language)}{!item.published ? ` · ${copy('draft')}` : ''}</option>)}</select></label>}
             </>}
             <button className="button button-primary button-wide" disabled={busy || !topics.length}>{busy ? '…' : copy('save')}<Check size={15} /></button>
           </form>

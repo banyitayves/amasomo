@@ -60,6 +60,12 @@ Open <http://localhost:5173>. Create your account using the email in `ADMIN_EMAI
 
 Use the language selector to switch between Kinyarwanda, English, Kiswahili, and French. The admin editor requires the title, summary/notes, question, answers, and explanation to be entered in all four languages. Students can search the translated topics, notes, and practice questions, bookmark lessons and questions, and request private teacher support. The administrator's **Manage content → Teacher requests** tab includes the student's email/phone and lets you update request status.
 
+### Creating exercises and timed exams
+
+- Under **Manage content → Practice**, create an exercise for instant feedback or attach a question to an exam. Add the question and four choices in each supported language, select its correct choice, and provide an explanation.
+- Under **Manage content → Exams**, create a draft with its subject and time limit. Use **Add question** on the exam to create and attach questions. Publish it only when its questions are ready; students then see it in **Practice exams** and get a timed score and answer review.
+- Under **Manage content → Study resources**, upload downloadable notes, past papers, exercise sheets, or exam papers. These files are separate from interactive exercises and timed exams.
+
 To brand signup confirmation emails, edit the confirmation subject and body under **Authentication → Email Templates → Confirm signup** in Supabase; the body can say “Amasomo Meza” and should retain Supabase's `{{ .ConfirmationURL }}` link. The default Supabase sender identity cannot be renamed by application code. A custom From name/address requires configuring a custom SMTP provider in Supabase **Authentication → SMTP Settings** and verifying the sending domain.
 
 ## Production
