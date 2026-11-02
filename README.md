@@ -10,6 +10,7 @@ A mobile-friendly multilingual learning website built with React, Vite, Tailwind
 - Timed exams, server-side grading, scores, and answer-by-answer review
 - Saved lesson completions, past results, subject progress, and weak-topic insights
 - Admin-only lesson and question create, edit, and delete tools
+- A multilingual resource library for notes, past papers, exercises, and exams, with private storage and student downloads
 - Responsive layouts for phones, tablets, and desktop
 
 ## Requirements
@@ -21,8 +22,9 @@ A mobile-friendly multilingual learning website built with React, Vite, Tailwind
 
 1. Create a Supabase project and open **SQL Editor**.
 2. Run `backend/schema.sql`, followed by `backend/seed.sql`. This creates the tables and translated starter lessons, practice questions, and exam.
-3. In **Authentication → URL Configuration**, add `http://localhost:5173` to the allowed redirect URLs. Add your production website URL when deploying.
-4. In **Project Settings → API**, copy the project URL, the publishable/anon key, and the `service_role` secret. The service-role secret is backend-only and must never be added to a `VITE_` variable or committed to source control.
+3. Run `backend/resources.sql`. This creates the resource metadata table and private Supabase Storage bucket. It supports PDF, Office, image, and text files up to 50 MB.
+4. In **Authentication → URL Configuration**, add `http://localhost:5173` to the allowed redirect URLs. Add your production website URL when deploying.
+5. In **Project Settings → API**, copy the project URL, the publishable/anon key, and the `service_role` secret. The service-role secret is backend-only and must never be added to a `VITE_` variable or committed to source control.
 
 Tables have row-level security enabled. The browser only uses Supabase Auth; the Express API verifies each Supabase access token and accesses content with the server-only service role. Answer keys are not returned to students before exercise checks or exam submission. Admin access is determined on the server by an exact match to `ADMIN_EMAIL`.
 
@@ -58,7 +60,7 @@ Use the language selector to switch between Kinyarwanda, English, Kiswahili, and
 
 The project is configured for a single Vercel deployment: Vite builds static files into `public`, and Vercel serves them alongside an Express catch-all serverless function for `/api` routes. The frontend calls `/api` on the same origin.
 
-1. Create a Vercel project from this folder, or run `npx vercel login` and `npx vercel` from PowerShell.
+1. Create a Vercel project from this folder, or run `npx vercel login` and `npx vercel` from PowerShell. The production site is `https://amasomo.vercel.app`.
 2. In Vercel project **Settings → Environment Variables**, set the following for **Production** (and Preview if you want preview deployments):
    - `VITE_SUPABASE_URL`: your Supabase project URL
    - `VITE_SUPABASE_ANON_KEY`: your Supabase publishable/anon key
@@ -66,9 +68,13 @@ The project is configured for a single Vercel deployment: Vite builds static fil
    - `SUPABASE_SERVICE_ROLE_KEY`: the Supabase service-role secret (backend only)
    - `ADMIN_EMAIL`: the exact email address you will use for your administrator account
 3. Deploy the project. Set `VITE_API_URL` to an empty value or leave it unset so the app uses its same-origin API.
-4. Copy the assigned `https://…vercel.app` URL. In Supabase **Authentication → URL Configuration**, set the **Site URL** to that origin and add it as an allowed redirect URL. Add `http://localhost:5173` too if you also use the local app.
+4. In Supabase **Authentication → URL Configuration**, set the **Site URL** to `https://amasomo.vercel.app` and add it as an allowed redirect URL. Add `http://localhost:5173` too if you also use the local app.
 5. Add the deployed origin as `FRONTEND_ORIGIN` in Vercel if you later make cross-origin API requests. Redeploy after changing frontend environment variables.
 6. Open the production site, sign up with the exact `ADMIN_EMAIL`, confirm the email if requested, and sign in. The Manage content page appears only for that email.
+
+## Uploading and downloading resources
+
+After running `backend/resources.sql`, sign in with the administrator account and open **Manage content → Study resources**. Add a translated title, choose a category and optional subject, then upload a PDF, Office document, image, or text file (up to 50 MB). Students can browse and download published resources from **Study resources**. Files stay in a private Storage bucket; the API issues short-lived download links only to signed-in students.
 
 Vercel and Supabase offer free tiers subject to their current limits and terms. Review usage and pricing on both platforms before production use.
 

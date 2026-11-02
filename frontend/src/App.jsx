@@ -571,30 +571,43 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
     } catch (deleteError) { setError(deleteError.message) }
   }
 
-  return <><PageHeading eyebrow={copy('teachingToolkit')} title={copy('adminTitle')} description={copy('learnSmall')} /><div className="admin-tabs"><button className={kind === 'lesson' ? 'selected' : ''} onClick={() => { setKind('lesson'); setEditing(null) }}><BookOpen size={16} />{copy('lessons')} ({lessons.length})</button><button className={kind === 'question' ? 'selected' : ''} onClick={() => { setKind('question'); setEditing(null) }}><CircleHelp size={16} />{copy('practice')} ({questions.length})</button></div>
-    {error && <div className="notice notice-error">{error}</div>}
-    <div className="admin-layout"><section className="panel admin-list"><div className="panel-heading"><div><span className="section-kicker">{copy('libraryEyebrow')}</span><h2>{kind === 'lesson' ? copy('lessons') : copy('practice')}</h2></div><button className="button button-primary button-small" onClick={() => startNew(kind)}><Plus size={15} />{kind === 'lesson' ? copy('addLesson') : copy('addQuestion')}</button></div>
-      {(kind === 'lesson' ? lessons : questions).map((item) => <div className="admin-row" key={item.id}><span className="admin-row-icon">{kind === 'lesson' ? <BookOpen size={16} /> : <CircleHelp size={16} />}</span><span className="admin-row-title"><b>{text(item.title || item.prompt, language)}</b><small>{topics.find((topic) => topic.id === item.topic_id)?.title || ''}</small></span><button aria-label={copy('edit')} onClick={() => editItem(item, kind)}><RotateCcw size={15} /></button><button aria-label={copy('delete')} onClick={() => remove(item, kind)}><Trash2 size={15} /></button></div>)}
-      {(kind === 'lesson' ? lessons : questions).length === 0 && <div className="empty-message">{copy('noLessons')}</div>}
-    </section>
-    <section className="panel admin-form-panel"><div className="panel-heading"><div><span className="section-kicker">{copy('languageEyebrow')}</span><h2>{editing ? copy('edit') : kind === 'lesson' ? copy('addLesson') : copy('addQuestion')}</h2></div>{editing && <button className="icon-quiet" onClick={() => setEditing(null)} aria-label={copy('cancel')}><X size={17} /></button>}</div>
-      <form className="admin-form" onSubmit={save}><label className="field-label">{copy('selectTopic')}<select required value={form.topic_id || ''} onChange={(event) => setForm({ ...form, topic_id: event.target.value })}><option value="" disabled>{copy('selectTopic')}</option>{topics.map((topic) => <option key={topic.id} value={topic.id}>{topic.subjectName} · {topic.title}</option>)}</select></label>
-        {kind === 'lesson' ? <>
-          <TranslationFields label={copy('lessonTitle')} field="title" value={form.title} onChange={changeTranslation} />
-          <TranslationFields label={copy('shortSummary')} field="summary" value={form.summary} onChange={changeTranslation} />
-          <TranslationFields label={copy('lessonNotes')} field="content" value={form.content} onChange={changeTranslation} multiline />
-          <label className="field-label">{copy('mediaLink')}<input type="url" value={form.media_url || ''} onChange={(event) => setForm({ ...form, media_url: event.target.value })} placeholder="https://" /></label>
-        </> : <>
-          <TranslationFields label={copy('questionPrompt')} field="prompt" value={form.prompt} onChange={changeTranslation} />
-          {['A', 'B', 'C', 'D'].map((option) => <TranslationFields key={option} label={`${copy('choice')} ${option}`} field="options" option={option} value={form.options?.[option] || emptyTranslations()} onChange={changeTranslation} />)}
-          <label className="field-label">{copy('correctAnswer')}<select value={form.answer || 'A'} onChange={(event) => setForm({ ...form, answer: event.target.value })}>{['A', 'B', 'C', 'D'].map((answer) => <option key={answer}>{answer}</option>)}</select></label>
-          <TranslationFields label={copy('explanation')} field="explanation" value={form.explanation} onChange={changeTranslation} multiline />
-          <label className="field-label">{copy('questionType')}<select value={form.question_type || 'exercise'} onChange={(event) => setForm({ ...form, question_type: event.target.value })}><option value="exercise">{copy('practice')}</option><option value="exam">{copy('exams')}</option></select></label>
-          {form.question_type === 'exam' && <label className="field-label">{copy('exams')}<select required value={form.exam_id || ''} onChange={(event) => setForm({ ...form, exam_id: event.target.value })}><option value="" disabled>{copy('selectExam')}</option>{exams.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>}
-        </>}
-        <button className="button button-primary button-wide" disabled={busy || !topics.length}>{busy ? '…' : copy('save')}<Check size={15} /></button>
-      </form>
-    </section></div>
+  return <>
+    <PageHeading eyebrow={copy('teachingToolkit')} title={copy('adminTitle')} description={copy('learnSmall')} />
+    <div className="admin-tabs">
+      <button className={kind === 'lesson' ? 'selected' : ''} onClick={() => { setKind('lesson'); setEditing(null) }}><BookOpen size={16} />{copy('lessons')} ({lessons.length})</button>
+      <button className={kind === 'question' ? 'selected' : ''} onClick={() => { setKind('question'); setEditing(null) }}><CircleHelp size={16} />{copy('practice')} ({questions.length})</button>
+      <button className={kind === 'resources' ? 'selected' : ''} onClick={() => { setKind('resources'); setEditing(null) }}><Download size={16} />{copy('resources')}</button>
+    </div>
+    {kind === 'resources' ? <AdminResourcesPage token={token} language={language} subjects={subjects} onChanged={onChanged} /> : <>
+      {error && <div className="notice notice-error">{error}</div>}
+      <div className="admin-layout">
+        <section className="panel admin-list">
+          <div className="panel-heading"><div><span className="section-kicker">{copy('libraryEyebrow')}</span><h2>{kind === 'lesson' ? copy('lessons') : copy('practice')}</h2></div><button className="button button-primary button-small" onClick={() => startNew(kind)}><Plus size={15} />{kind === 'lesson' ? copy('addLesson') : copy('addQuestion')}</button></div>
+          {(kind === 'lesson' ? lessons : questions).map((item) => <div className="admin-row" key={item.id}><span className="admin-row-icon">{kind === 'lesson' ? <BookOpen size={16} /> : <CircleHelp size={16} />}</span><span className="admin-row-title"><b>{text(item.title || item.prompt, language)}</b><small>{topics.find((topic) => topic.id === item.topic_id)?.title || ''}</small></span><button aria-label={copy('edit')} onClick={() => editItem(item, kind)}><RotateCcw size={15} /></button><button aria-label={copy('delete')} onClick={() => remove(item, kind)}><Trash2 size={15} /></button></div>)}
+          {(kind === 'lesson' ? lessons : questions).length === 0 && <div className="empty-message">{copy('noLessons')}</div>}
+        </section>
+        <section className="panel admin-form-panel">
+          <div className="panel-heading"><div><span className="section-kicker">{copy('languageEyebrow')}</span><h2>{editing ? copy('edit') : kind === 'lesson' ? copy('addLesson') : copy('addQuestion')}</h2></div>{editing && <button className="icon-quiet" onClick={() => setEditing(null)} aria-label={copy('cancel')}><X size={17} /></button>}</div>
+          <form className="admin-form" onSubmit={save}>
+            <label className="field-label">{copy('selectTopic')}<select required value={form.topic_id || ''} onChange={(event) => setForm({ ...form, topic_id: event.target.value })}><option value="" disabled>{copy('selectTopic')}</option>{topics.map((topic) => <option key={topic.id} value={topic.id}>{topic.subjectName} · {topic.title}</option>)}</select></label>
+            {kind === 'lesson' ? <>
+              <TranslationFields label={copy('lessonTitle')} field="title" value={form.title} onChange={changeTranslation} />
+              <TranslationFields label={copy('shortSummary')} field="summary" value={form.summary} onChange={changeTranslation} />
+              <TranslationFields label={copy('lessonNotes')} field="content" value={form.content} onChange={changeTranslation} multiline />
+              <label className="field-label">{copy('mediaLink')}<input type="url" value={form.media_url || ''} onChange={(event) => setForm({ ...form, media_url: event.target.value })} placeholder="https://" /></label>
+            </> : <>
+              <TranslationFields label={copy('questionPrompt')} field="prompt" value={form.prompt} onChange={changeTranslation} />
+              {['A', 'B', 'C', 'D'].map((option) => <TranslationFields key={option} label={`${copy('choice')} ${option}`} field="options" option={option} value={form.options?.[option] || emptyTranslations()} onChange={changeTranslation} />)}
+              <label className="field-label">{copy('correctAnswer')}<select value={form.answer || 'A'} onChange={(event) => setForm({ ...form, answer: event.target.value })}>{['A', 'B', 'C', 'D'].map((answer) => <option key={answer}>{answer}</option>)}</select></label>
+              <TranslationFields label={copy('explanation')} field="explanation" value={form.explanation} onChange={changeTranslation} multiline />
+              <label className="field-label">{copy('questionType')}<select value={form.question_type || 'exercise'} onChange={(event) => setForm({ ...form, question_type: event.target.value })}><option value="exercise">{copy('practice')}</option><option value="exam">{copy('exams')}</option></select></label>
+              {form.question_type === 'exam' && <label className="field-label">{copy('exams')}<select required value={form.exam_id || ''} onChange={(event) => setForm({ ...form, exam_id: event.target.value })}><option value="" disabled>{copy('selectExam')}</option>{exams.map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></label>}
+            </>}
+            <button className="button button-primary button-wide" disabled={busy || !topics.length}>{busy ? '…' : copy('save')}<Check size={15} /></button>
+          </form>
+        </section>
+      </div>
+    </>}
   </>
 }
 

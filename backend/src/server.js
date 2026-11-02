@@ -1,4 +1,5 @@
 import dotenv from 'dotenv'
+import { randomUUID } from 'node:crypto'
 import cors from 'cors'
 import express from 'express'
 import helmet from 'helmet'
@@ -11,6 +12,22 @@ const app = express()
 const port = Number(process.env.PORT) || 3001
 const supabaseUrl = process.env.SUPABASE_URL
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+const resourceBucket = 'learning-resources'
+const resourceFileTypes = new Map([
+  ['pdf', 'application/pdf'],
+  ['doc', 'application/msword'],
+  ['docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+  ['ppt', 'application/vnd.ms-powerpoint'],
+  ['pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
+  ['xls', 'application/vnd.ms-excel'],
+  ['xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+  ['png', 'image/png'],
+  ['jpg', 'image/jpeg'],
+  ['jpeg', 'image/jpeg'],
+  ['webp', 'image/webp'],
+  ['txt', 'text/plain'],
+])
+const resourceCategories = new Set(['notes', 'past_papers', 'exercises', 'exams'])
 const supabase = supabaseUrl && serviceKey
   ? createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
   : null
@@ -40,6 +57,50 @@ function requireTranslations(value, label, max = 5000) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) fail(400, `${label} must include translations.`)
   for (const language of ['rw', 'en', 'sw', 'fr']) requireText(value[language], `${label} (${language})`, max)
   return value
+}
+
+function optionalTranslations(value, label, max = 500) {
+  if (value === undefined || value === null) return {}
+  if (typeof value !== 'object' || Array.isArray(value)) fail(400, `${label} must include translations.`)
+  return Object.fromEntries(['rw', 'en', 'sw', 'fr'].map((language) => {
+    const translation = value[language] ?? ''
+    if (typeof translation !== 'string' || translation.length > max) fail(400, `${label} translations must be under ${max} characters.`)
+    return [language, translation.trim()]
+  }))
+}
+
+function requireResourceCategory(value) {
+  if (typeof value !== 'string' || !resourceCategories.has(value)) {
+    fail(400, 'Choose notes, past papers, exercises, or exams.')
+  }
+  return value
+}
+
+function validateResourceFile(body) {
+  const fileName = requireText(body.file_name, 'File name', 180)
+    .replace(/[\/\\]/g, '_')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+  const extension = fileName.split('.').pop()?.toLowerCase()
+  const expectedMime = resourceFileTypes.get(extension)
+  if (!expectedMime || (body.mime_type && body.mime_type !== expectedMime)) {
+    fail(400, 'Upload a PDF, Office document, image, or text file.')
+  }
+  const fileSize = Number(body.file_size)
+  if (!Number.isSafeInteger(fileSize) || fileSize < 1 || fileSize > 50 * 1024 * 1024) {
+    fail(400, 'Files must be no larger than 50 MB.')
+  }
+  return { fileName, extension, fileSize, mimeType: expectedMime }
+}
+
+function validateResourcePath(value, extension) {
+  const path = requireText(value, 'Upload path', 100)
+  if (!/^resources\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[a-z0-9]+$/i.test(path)) {
+    fail(400, 'The uploaded file path is invalid.')
+  }
+  if (extension && !path.toLowerCase().endsWith(`.${extension}`)) {
+    fail(400, 'The uploaded file type does not match its file name.')
+  }
+  return path
 }
 
 async function run(query) {
@@ -193,6 +254,38 @@ app.get('/api/exams', async (req, res) => {
     }
   }))
   res.json({ exams: result })
+})
+
+app.get('/api/resources', async (req, res) => {
+  const language = ['rw', 'en', 'sw', 'fr'].includes(req.query.lang) ? req.query.lang : 'en'
+  const resources = await run(supabase.from('study_resources')
+    .select('id,title,description,category,subject_id,file_name,file_size,created_at,subjects(name)')
+    .eq('published', true).order('created_at', { ascending: false }))
+  res.json({ resources: resources.map((resource) => ({
+    id: resource.id,
+    title: localized(resource.title, language),
+    description: localized(resource.description, language),
+    category: resource.category,
+    subject_id: resource.subject_id,
+    subject_name: resource.subject_id ? localized(resource.subjects?.name, language) : '',
+    file_name: resource.file_name,
+    file_size: resource.file_size,
+    created_at: resource.created_at,
+  })) })
+})
+
+app.get('/api/resources/:id/download', async (req, res) => {
+  const resource = await run(supabase.from('study_resources')
+    .select('object_path,file_name').eq('id', req.params.id).eq('published', true).maybeSingle())
+  if (!resource) return res.status(404).json({ error: 'This resource is not available.' })
+  const { data, error } = await supabase.storage.from(resourceBucket)
+    .createSignedUrl(resource.object_path, 60, { download: resource.file_name })
+  if (error) {
+    const storageError = new Error('The resource file could not be prepared for download.')
+    storageError.status = 500
+    throw storageError
+  }
+  res.json({ url: data.signedUrl })
 })
 
 app.get('/api/exams/:examId', async (req, res) => {
@@ -414,6 +507,99 @@ app.put('/api/admin/questions/:id', requireAdmin, async (req, res) => {
 
 app.delete('/api/admin/questions/:id', requireAdmin, async (req, res) => {
   await run(supabase.from('questions').delete().eq('id', req.params.id))
+  res.status(204).end()
+})
+
+app.get('/api/admin/resources', requireAdmin, async (_req, res) => {
+  const resources = await run(supabase.from('study_resources')
+    .select('id,title,description,category,subject_id,file_name,file_size,mime_type,published,created_at,subjects(name)')
+    .order('created_at', { ascending: false }))
+  res.json({ resources: resources.map((resource) => ({
+    ...resource,
+    subject_name: resource.subject_id ? localized(resource.subjects?.name, 'en') : '',
+    subjects: undefined,
+  })) })
+})
+
+app.post('/api/admin/resources/upload-url', requireAdmin, async (req, res) => {
+  const file = validateResourceFile(req.body)
+  const path = `resources/${randomUUID()}.${file.extension}`
+  const { data, error } = await supabase.storage.from(resourceBucket).createSignedUploadUrl(path, { upsert: false })
+  if (error) {
+    const storageError = new Error('Could not prepare the file upload.')
+    storageError.status = 500
+    throw storageError
+  }
+  res.json({ path: data.path, token: data.token, mime_type: file.mimeType })
+})
+
+app.delete('/api/admin/resources/upload', requireAdmin, async (req, res) => {
+  const path = validateResourcePath(req.body.path)
+  const { error } = await supabase.storage.from(resourceBucket).remove([path])
+  if (error) {
+    const storageError = new Error('The incomplete upload could not be removed.')
+    storageError.status = 500
+    throw storageError
+  }
+  res.status(204).end()
+})
+
+app.post('/api/admin/resources', requireAdmin, async (req, res) => {
+  const file = validateResourceFile(req.body)
+  const path = validateResourcePath(req.body.upload_path, file.extension)
+  const title = requireTranslations(req.body.title, 'Title', 180)
+  const description = optionalTranslations(req.body.description, 'Description', 500)
+  const category = requireResourceCategory(req.body.category)
+  let subjectId = null
+  if (req.body.subject_id) {
+    subjectId = requireText(req.body.subject_id, 'Subject', 36)
+    const subject = await run(supabase.from('subjects').select('id').eq('id', subjectId).maybeSingle())
+    if (!subject) fail(400, 'Choose an existing subject.')
+  }
+  const { error: fileError } = await supabase.storage.from(resourceBucket).createSignedUrl(path, 60)
+  if (fileError) fail(400, 'Upload the selected file before saving its details.')
+  const resource = await run(supabase.from('study_resources').insert({
+    title,
+    description,
+    category,
+    subject_id: subjectId,
+    object_path: path,
+    file_name: file.fileName,
+    file_size: file.fileSize,
+    mime_type: file.mimeType,
+    uploaded_by: req.user.id,
+  }).select('id').single())
+  res.status(201).json({ resource })
+})
+
+app.put('/api/admin/resources/:id', requireAdmin, async (req, res) => {
+  const title = requireTranslations(req.body.title, 'Title', 180)
+  const description = optionalTranslations(req.body.description, 'Description', 500)
+  const category = requireResourceCategory(req.body.category)
+  let subjectId = null
+  if (req.body.subject_id) {
+    subjectId = requireText(req.body.subject_id, 'Subject', 36)
+    const subject = await run(supabase.from('subjects').select('id').eq('id', subjectId).maybeSingle())
+    if (!subject) fail(400, 'Choose an existing subject.')
+  }
+  const resource = await run(supabase.from('study_resources')
+    .update({ title, description, category, subject_id: subjectId })
+    .eq('id', req.params.id).select('id').maybeSingle())
+  if (!resource) return res.status(404).json({ error: 'Resource not found.' })
+  res.json({ resource })
+})
+
+app.delete('/api/admin/resources/:id', requireAdmin, async (req, res) => {
+  const resource = await run(supabase.from('study_resources')
+    .select('id,object_path').eq('id', req.params.id).maybeSingle())
+  if (!resource) return res.status(404).json({ error: 'Resource not found.' })
+  const { error: storageError } = await supabase.storage.from(resourceBucket).remove([resource.object_path])
+  if (storageError) {
+    const failure = new Error('The resource file could not be deleted.')
+    failure.status = 500
+    throw failure
+  }
+  await run(supabase.from('study_resources').delete().eq('id', resource.id))
   res.status(204).end()
 })
 
