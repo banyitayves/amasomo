@@ -56,7 +56,7 @@ Use the language selector to switch between Kinyarwanda, English, Kiswahili, and
 
 ## Production
 
-The project is configured for a single Vercel deployment: Vite builds static files into `public`, and Vercel runs the Express app as a serverless function. The frontend calls `/api` on the same origin.
+The project is configured for a single Vercel deployment: Vite builds static files into `public`, and Vercel serves them alongside an Express catch-all serverless function for `/api` routes. The frontend calls `/api` on the same origin.
 
 1. Create a Vercel project from this folder, or run `npx vercel login` and `npx vercel` from PowerShell.
 2. In Vercel project **Settings → Environment Variables**, set the following for **Production** (and Preview if you want preview deployments):
