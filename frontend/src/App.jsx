@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft, ArrowRight, Atom, Award, BookOpen, Check, CheckCircle2, ChevronDown, ChevronRight, Eye, EyeOff,
   CircleHelp, Clock3, Compass, Download, FlaskConical, GraduationCap, Leaf, LockKeyhole, LogOut, Menu,
-  MessageCircle, Phone, Play, Plus, RotateCcw, Search, Sparkles, Target, Trash2, Upload, X,
+  MessageCircle, MessageSquareText, Phone, Play, Plus, RotateCcw, Search, Sparkles, Target, Trash2, Upload, X,
 } from 'lucide-react'
 import { api, configured, supabase } from './api.js'
 import { examCsvTemplate, parseExamCsv } from './examCsv.js'
