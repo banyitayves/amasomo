@@ -373,6 +373,19 @@ function App() {
   }
   submitExamRef.current = submitExam
 
+  async function openExamAttempt(attemptId) {
+    try {
+      const { attempt } = await api(`/exam-attempts/${attemptId}?lang=${language}`, { token })
+      setExam(null)
+      setExamAnswers({})
+      setExamResult({ ...attempt, history: true })
+      setSection('exam')
+      setMobileMenu(false)
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }
+
   async function signOut() {
     const { error: signOutError } = await supabase.auth.signOut()
     if (signOutError) setError(signOutError.message)
@@ -430,12 +443,12 @@ function App() {
           {section === 'practice' && <PracticePage subjects={subjects} topic={activeTopic || subjects[0]?.topics?.[0]} onTopic={setActiveTopic} topicData={topicData} language={language} token={token} initialQuestionId={practiceQuestionId} onQuestionOpened={() => setPracticeQuestionId(null)} bookmarkIds={bookmarkIds} onToggleBookmark={toggleBookmark} />}
           {section === 'exams' && <ExamsPage exams={exams} language={language} onStart={startExam} />}
           {section === 'exam' && exam && !examResult && <ExamPage exam={exam} answers={examAnswers} setAnswers={setExamAnswers} index={examIndex} setIndex={setExamIndex} secondsLeft={secondsLeft} onSubmit={submitExam} submitting={examSubmitting} language={language} />}
-          {section === 'exam' && examResult && <ExamResult result={examResult} language={language} onAgain={() => { setExam(null); navigate('exams') }} />}
+          {section === 'exam' && examResult && <ExamResult result={examResult} language={language} onAgain={() => navigate(examResult.history ? 'progress' : 'exams')} />}
           {section === 'resources' && <ResourcesPage token={token} language={language} subjects={subjects} />}
           {section === 'search' && <SearchPage language={language} token={token} onOpenTopic={openTopic} onOpenLesson={openLesson} onOpenQuestion={openQuestion} />}
           {section === 'bookmarks' && <BookmarksPage language={language} token={token} onToggle={toggleBookmark} onOpenLesson={openLesson} onOpenQuestion={openQuestion} />}
           {section === 'askTeacher' && <SupportPage language={language} token={token} subjects={subjects} />}
-          {section === 'progress' && <ProgressPage progress={progress} subjects={subjects} language={language} />}
+          {section === 'progress' && <ProgressPage progress={progress} subjects={subjects} language={language} onReviewAttempt={openExamAttempt} />}
           {section === 'admin' && isAdmin && <AdminPage subjects={subjects} exams={exams} token={token} language={language} onChanged={() => { loadOverview(token); setToast(copy('contentSaved')) }} />}
           {!['home', 'subjects', 'lesson', 'practice', 'exams', 'exam', 'resources', 'search', 'bookmarks', 'askTeacher', 'progress', 'admin'].includes(section) && <HomePage subjects={subjects} progress={progress} language={language} onOpenSubject={(subject) => { setActiveTopic(subject.topics?.[0] || null); navigate('subjects') }} onNavigate={navigate} />}
           </Suspense>
@@ -611,20 +624,22 @@ function ExamsPage({ exams, language, onStart }) {
 function ExamPage({ exam, answers, setAnswers, index, setIndex, secondsLeft, onSubmit, submitting, language }) {
   const question = exam.questions[index]
   const time = `${String(Math.floor(secondsLeft / 60)).padStart(2, '0')}:${String(secondsLeft % 60).padStart(2, '0')}`
-  return <section className="exam-taking"><div className="exam-taking-head"><div><span className="section-kicker">{exam.title}</span><h1>{t(language, 'question')} {index + 1} <span>{t(language, 'of')} {exam.questions.length}</span></h1></div><div className={`timer-pill ${secondsLeft < 60 ? 'timer-warning' : ''}`}><Clock3 size={17} /><span>{t(language, 'timeLeft')}</span><b>{time}</b></div></div><div className="exam-progress-track"><span style={{ width: `${((index + 1) / exam.questions.length) * 100}%` }} /></div><article className="question-card exam-question-card"><div className="question-card-top"><span className="question-chip">{index + 1}/{exam.questions.length}</span><span className="section-kicker">{exam.description}</span></div><h2>{question.prompt}</h2><div className="answer-options">{(question.option_order || Object.keys(question.options)).map((key) => <button key={key} className={`answer-option ${answers[question.id] === key ? 'answer-selected' : ''}`} onClick={() => setAnswers({ ...answers, [question.id]: key })}><span className="choice-letter">{key}</span><span>{question.options[key]}</span></button>)}</div></article><div className="exam-controls"><button className="button button-outline" disabled={index === 0} onClick={() => setIndex(index - 1)}><ArrowLeft size={15} />{t(language, 'previous')}</button><span>{Object.keys(answers).length}/{exam.questions.length} {t(language, 'answered')}</span>{index < exam.questions.length - 1 ? <button className="button button-primary" onClick={() => setIndex(index + 1)}>{t(language, 'next')}<ArrowRight size={15} /></button> : <button className="button button-primary" disabled={submitting} onClick={onSubmit}>{submitting ? '…' : t(language, 'submitExam')}<Check size={15} /></button>}</div></section>
+  return <section className="exam-taking"><div className="exam-taking-head"><div><span className="section-kicker">{exam.title}</span><h1>{t(language, 'question')} {index + 1} <span>{t(language, 'of')} {exam.questions.length}</span></h1></div><div className={`timer-pill ${secondsLeft < 60 ? 'timer-warning' : ''}`}><Clock3 size={17} /><span>{t(language, 'timeLeft')}</span><b>{time}</b></div></div><div className="exam-progress-track"><span style={{ width: `${((index + 1) / exam.questions.length) * 100}%` }} /></div><article className="question-card exam-question-card"><div className="question-card-top"><span className="question-chip">{index + 1}/{exam.questions.length}</span><span className="section-kicker">{exam.description}</span></div><h2>{question.prompt}</h2>{question.answerType === 'open' ? <label className="field-label exam-open-answer">{t(language, 'yourAnswer')}<textarea rows={5} maxLength={5000} value={answers[question.id] || ''} onChange={(event) => setAnswers({ ...answers, [question.id]: event.target.value })} /></label> : <div className="answer-options">{(question.option_order || Object.keys(question.options)).map((key) => <button key={key} className={`answer-option ${answers[question.id] === key ? 'answer-selected' : ''}`} onClick={() => setAnswers({ ...answers, [question.id]: key })}><span className="choice-letter">{key}</span><span>{question.options[key]}</span></button>)}</div>}</article><div className="exam-controls"><button className="button button-outline" disabled={index === 0} onClick={() => setIndex(index - 1)}><ArrowLeft size={15} />{t(language, 'previous')}</button><span>{Object.keys(answers).filter((key) => String(answers[key]).trim()).length}/{exam.questions.length} {t(language, 'answered')}</span>{index < exam.questions.length - 1 ? <button className="button button-primary" onClick={() => setIndex(index + 1)}>{t(language, 'next')}<ArrowRight size={15} /></button> : <button className="button button-primary" disabled={submitting} onClick={onSubmit}>{submitting ? '…' : t(language, 'submitExam')}<Check size={15} /></button>}</div></section>
 }
 
 function ExamResult({ result, language, onAgain }) {
-  return <section className="result-page"><div className="result-hero"><span className="result-medal"><Award size={28} /></span><span className="section-kicker">{t(language, 'examComplete')}</span><h1>{result.percent}%</h1><p>{result.score} / {result.total} · {result.title}</p><div className="result-track"><span style={{ width: `${result.percent}%` }} /></div><button className="button button-primary" onClick={onAgain}><RotateCcw size={15} />{t(language, 'tryAgain')}</button></div><div className="review-section"><div className="section-heading"><div><span className="section-kicker">{t(language, 'reviewAnswers')}</span><h2>{t(language, 'reviewAnswers')}</h2></div></div><div className="review-list">{result.review.map((answer, index) => <article className={`review-card ${answer.correct ? 'review-right' : 'review-missed'}`} key={answer.questionId}><span className="review-check">{answer.correct ? <Check size={16} /> : <X size={16} />}</span>  <div><span className="section-kicker">{t(language, 'question')} {index + 1} · {answer.topicTitle}</span><h3>{answer.prompt}</h3><p><b>{t(language, 'correctAnswer')} ({answer.correctAnswer}):</b> {answer.correctLabel}</p>{answer.selected && !answer.correct && <p><b>{t(language, 'yourAnswer')}:</b> {answer.selected}</p>}<p>{answer.explanation}</p></div></article>)}</div></div></section>
+  const pendingCount = result.review.filter((answer) => answer.answerType === 'open' && answer.gradingStatus !== 'graded').length
+  const provisional = pendingCount > 0
+  return <section className="result-page"><div className="result-hero"><span className="result-medal"><Award size={28} /></span><span className="section-kicker">{t(language, 'examComplete')}</span><h1>{result.percent}%</h1><p>{result.score} / {result.total} · {result.title}</p>{provisional && <p className="exam-provisional-note">{t(language, 'examPendingGrade')}</p>}<div className="result-track"><span style={{ width: `${result.percent}%` }} /></div><button className="button button-primary" onClick={onAgain}><RotateCcw size={15} />{t(language, result.history ? 'viewProgress' : 'tryAgain')}</button></div><div className="review-section"><div className="section-heading"><div><span className="section-kicker">{t(language, 'reviewAnswers')}</span><h2>{t(language, 'reviewAnswers')}</h2></div></div><div className="review-list">{result.review.map((answer, index) => <article className={`review-card ${answer.gradingStatus === 'pending' ? '' : answer.correct ? 'review-right' : 'review-missed'}`} key={answer.questionId}><span className="review-check">{answer.gradingStatus === 'pending' ? <Clock3 size={16} /> : answer.correct ? <Check size={16} /> : <X size={16} />}</span><div><span className="section-kicker">{t(language, 'question')} {index + 1} · {answer.topicTitle}</span><h3>{answer.prompt}</h3>{answer.answerType === 'open' ? <><p><b>{t(language, 'yourAnswer')}:</b> {answer.selected || t(language, 'noAnswerProvided')}</p><p><b>{t(language, 'modelAnswer')}:</b> {answer.modelAnswer}</p>{answer.gradingStatus === 'pending' ? <p className="exam-pending-grade">{t(language, 'answerPendingGrade')}</p> : <><p><b>{t(language, answer.correct ? 'answerCorrect' : 'answerIncorrect')}</b></p>{answer.gradingFeedback && <p>{answer.gradingFeedback}</p>}</>}</> : <><p><b>{t(language, 'correctAnswer')} ({answer.correctAnswer}):</b> {answer.correctLabel}</p>{answer.selected && !answer.correct && <p><b>{t(language, 'yourAnswer')}:</b> {answer.selectedLabel}</p>}</>}{answer.explanation && <p>{answer.explanation}</p>}</div></article>)}</div></div></section>
 }
 
-function ProgressPage({ progress, subjects, language }) {
+function ProgressPage({ progress, subjects, language, onReviewAttempt }) {
   const cards = [
     { icon: BookOpen, value: progress.completedLessons, label: t(language, 'completedLessons'), color: 'progress-green' },
     { icon: Target, value: `${progress.average}%`, label: t(language, 'examAverage'), color: 'progress-violet' },
     { icon: Award, value: progress.attempts.length, label: t(language, 'exams'), color: 'progress-amber' },
   ]
-  return <><PageHeading eyebrow={t(language, 'progressEyebrow')} title={t(language, 'dashboard')} description={t(language, 'welcome')} /><div className="stat-grid">{cards.map(({ icon: Icon, value, label, color }) => <article className="stat-card" key={label}><span className={`stat-icon ${color}`}><Icon size={19} /></span><strong>{value}</strong><span>{label}</span></article>)}</div><div className="progress-columns"><section className="panel"><div className="panel-heading"><div><span className="section-kicker">{t(language, 'subjects')}</span><h2>{t(language, 'completedLessons')}</h2></div><span className="panel-count">{progress.completedLessons}</span></div><div className="subject-progress-list">{subjects.map((subject) => { const stats = progress.subjectProgress?.find((item) => item.subjectId === subject.id) || { completed: 0, total: 0 }; return <div key={subject.id} className="subject-progress"><span className={`mini-subject subject-${subject.color}`}><IconFor name={subject.icon} className="h-4 w-4" /></span><div className="subject-progress-info"><b>{subject.name}</b><div className="progress-track"><span style={{ width: `${stats.total ? Math.round(stats.completed / stats.total * 100) : 0}%` }} /></div></div><small>{stats.completed}/{stats.total}</small></div> })}</div></section><section className="panel"><div className="panel-heading"><div><span className="section-kicker">{t(language, 'weakAreas')}</span><h2>{t(language, 'weakAreas')}</h2></div><span className="panel-count"><Sparkles size={16} /></span></div><p className="panel-hint">{t(language, 'weakHint')}</p>{progress.weakAreas?.length ? progress.weakAreas.map((area) => <div className="weak-area" key={area.topicId}><span>{area.title}</span><div className="progress-track"><span style={{ width: `${Math.round(area.correct / area.total * 100)}%` }} /></div><small>{Math.round(area.correct / area.total * 100)}%</small></div>) : <div className="empty-message">{t(language, 'noResults')}</div>}</section></div><section className="panel recent-panel"><div className="panel-heading"><div><span className="section-kicker">{t(language, 'journey')}</span><h2>{t(language, 'recentResults')}</h2></div></div>{progress.attempts.length ? progress.attempts.slice(0, 8).map((attempt) => <div className="attempt-row" key={attempt.id}><span className="attempt-icon"><CheckCircle2 size={17} /></span><span className="attempt-name"><b>{attempt.title}</b><small>{new Intl.DateTimeFormat(language, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(attempt.created_at))}</small></span><span className="attempt-score">{attempt.percent}%</span><span className="attempt-fraction">{attempt.score}/{attempt.total}</span></div>) : <div className="empty-message">{t(language, 'noResults')}</div>}</section></>
+  return <><PageHeading eyebrow={t(language, 'progressEyebrow')} title={t(language, 'dashboard')} description={t(language, 'welcome')} /><div className="stat-grid">{cards.map(({ icon: Icon, value, label, color }) => <article className="stat-card" key={label}><span className={`stat-icon ${color}`}><Icon size={19} /></span><strong>{value}</strong><span>{label}</span></article>)}</div><div className="progress-columns"><section className="panel"><div className="panel-heading"><div><span className="section-kicker">{t(language, 'subjects')}</span><h2>{t(language, 'completedLessons')}</h2></div><span className="panel-count">{progress.completedLessons}</span></div><div className="subject-progress-list">{subjects.map((subject) => { const stats = progress.subjectProgress?.find((item) => item.subjectId === subject.id) || { completed: 0, total: 0 }; return <div key={subject.id} className="subject-progress"><span className={`mini-subject subject-${subject.color}`}><IconFor name={subject.icon} className="h-4 w-4" /></span><div className="subject-progress-info"><b>{subject.name}</b><div className="progress-track"><span style={{ width: `${stats.total ? Math.round(stats.completed / stats.total * 100) : 0}%` }} /></div></div><small>{stats.completed}/{stats.total}</small></div> })}</div></section><section className="panel"><div className="panel-heading"><div><span className="section-kicker">{t(language, 'weakAreas')}</span><h2>{t(language, 'weakAreas')}</h2></div><span className="panel-count"><Sparkles size={16} /></span></div><p className="panel-hint">{t(language, 'weakHint')}</p>{progress.weakAreas?.length ? progress.weakAreas.map((area) => <div className="weak-area" key={area.topicId}><span>{area.title}</span><div className="progress-track"><span style={{ width: `${Math.round(area.correct / area.total * 100)}%` }} /></div><small>{Math.round(area.correct / area.total * 100)}%</small></div>) : <div className="empty-message">{t(language, 'noResults')}</div>}</section></div><section className="panel recent-panel"><div className="panel-heading"><div><span className="section-kicker">{t(language, 'journey')}</span><h2>{t(language, 'recentResults')}</h2></div></div>{progress.attempts.length ? progress.attempts.slice(0, 8).map((attempt) => <div className="attempt-row" key={attempt.id}><span className="attempt-icon"><CheckCircle2 size={17} /></span><span className="attempt-name"><b>{attempt.title}</b><small>{new Intl.DateTimeFormat(language, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(attempt.created_at))}{attempt.pendingOpenAnswers > 0 ? ` · ${t(language, 'examPendingGrade')}` : ''}</small></span><span className="attempt-score">{attempt.percent}%</span><span className="attempt-fraction">{attempt.score}/{attempt.total}</span><button className="button button-outline button-small" onClick={() => onReviewAttempt(attempt.id)}>{t(language, 'reviewAnswers')}</button></div>) : <div className="empty-message">{t(language, 'noResults')}</div>}</section></>
 }
 
 function AdminPage({ subjects, exams, token, language, onChanged }) {
@@ -647,9 +662,9 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
   const emptyTranslations = () => Object.fromEntries(languages.map(({ code }) => [code, '']))
   const [form, setForm] = useState(() => ({
     topic_id: '', title: emptyTranslations(), summary: emptyTranslations(), content: emptyTranslations(),
-    prompt: emptyTranslations(), explanation: emptyTranslations(),
+    prompt: emptyTranslations(), explanation: emptyTranslations(), model_answer: emptyTranslations(),
     options: Object.fromEntries(['A', 'B', 'C', 'D'].map((key) => [key, emptyTranslations()])),
-    answer: 'A', question_type: 'exercise', exam_id: '',
+    answer: 'A', answer_type: 'multiple_choice', question_type: 'exercise', exam_id: '',
   }))
   const [examForm, setExamForm] = useState(() => ({
     subject_id: subjects[0]?.id || '', title: emptyTranslations(), description: emptyTranslations(),
@@ -678,7 +693,12 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
     })
     else setForm({
       topic_id: item.topic_id, prompt: item.prompt, explanation: item.explanation,
-      options: item.options, answer: item.answer, question_type: item.question_type, exam_id: item.exam_questions?.[0]?.exam_id || '',
+      options: item.options?._answer_type === 'open'
+        ? Object.fromEntries(['A', 'B', 'C', 'D'].map((key) => [key, emptyTranslations()]))
+        : item.options,
+      model_answer: item.options?._model_answer || emptyTranslations(),
+      answer: item.answer, answer_type: item.options?._answer_type === 'open' ? 'open' : 'multiple_choice',
+      question_type: item.question_type, exam_id: item.exam_questions?.[0]?.exam_id || '',
     })
   }
 
@@ -687,9 +707,9 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
     setEditing(null)
     setForm({
       topic_id: topics[0]?.id || '', title: emptyTranslations(), summary: emptyTranslations(), content: emptyTranslations(),
-      prompt: emptyTranslations(), explanation: emptyTranslations(),
+      prompt: emptyTranslations(), explanation: emptyTranslations(), model_answer: emptyTranslations(),
       options: Object.fromEntries(['A', 'B', 'C', 'D'].map((key) => [key, emptyTranslations()])),
-      answer: 'A', question_type: 'exercise', exam_id: managedExams.find((item) => item.published)?.id || '',
+      answer: 'A', answer_type: 'multiple_choice', question_type: 'exercise', exam_id: managedExams.find((item) => item.published)?.id || '',
     })
   }
 
@@ -759,9 +779,11 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
             language: entryLanguage,
             questions: importedQuestions.map((question) => ({
               ...question,
-              prompt: { [entryLanguage]: question.prompt },
-              options: Object.fromEntries(Object.entries(question.options).map(([key, value]) => [key, { [entryLanguage]: value }])),
-              explanation: { [entryLanguage]: question.explanation },
+            answer_type: question.answerType,
+            prompt: { [entryLanguage]: question.prompt },
+            options: Object.fromEntries(Object.entries(question.options).map(([key, value]) => [key, { [entryLanguage]: value }])),
+            model_answer: question.modelAnswer ? { [entryLanguage]: question.modelAnswer } : {},
+            explanation: { [entryLanguage]: question.explanation },
             })),
           }),
         })
@@ -828,7 +850,7 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
     try {
       const body = kind === 'lesson'
         ? { topic_id: form.topic_id, title: form.title, summary: form.summary, content: form.content, media_url: form.media_url || '' }
-        : { topic_id: form.topic_id, prompt: form.prompt, explanation: form.explanation, options: form.options, answer: form.answer, question_type: form.question_type, exam_id: form.exam_id }
+        : { topic_id: form.topic_id, prompt: form.prompt, explanation: form.explanation, options: form.options, answer: form.answer, answer_type: form.answer_type, model_answer: form.model_answer, question_type: form.question_type, exam_id: form.exam_id }
       const path = `/admin/${kind === 'lesson' ? 'lessons' : 'questions'}${editing ? `/${editing}` : ''}`
       await api(path, { token, method: editing ? 'PUT' : 'POST', body: JSON.stringify(body) })
       setEditing(null)
@@ -858,9 +880,10 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
       <button className={kind === 'question' ? 'selected' : ''} onClick={() => { setKind('question'); setEditing(null) }}><CircleHelp size={16} />{copy('practice')} ({questions.length})</button>
       <button className={kind === 'exams' ? 'selected' : ''} onClick={() => { setKind('exams'); setEditing(null); startNewExam() }}><Clock3 size={16} />{copy('exams')} ({managedExams.length})</button>
       <button className={kind === 'resources' ? 'selected' : ''} onClick={() => { setKind('resources'); setEditing(null); setResourceUploadCategory('notes') }}><Download size={16} />{copy('resources')}</button>
+      <button className={kind === 'openResponses' ? 'selected' : ''} onClick={() => { setKind('openResponses'); setEditing(null) }}><MessageSquareText size={16} />{copy('openResponses')}</button>
       <button className={kind === 'support' ? 'selected' : ''} aria-label={`${copy('supportInbox')}: ${pendingRequestCount} ${copy('pending')}`} onClick={() => { setKind('support'); setEditing(null) }}><MessageCircle size={16} />{copy('supportInbox')}<span className="admin-tab-count">{pendingRequestCount}</span></button>
     </div>
-    {kind === 'resources' ? <><div className="exam-admin-guidance"><p>{copy('resourceWorkflow')}</p></div><AdminResourcesPage token={token} language={language} entryLanguage={entryLanguage} subjects={subjects} onChanged={onChanged} initialCategory={resourceUploadCategory} /></> : kind === 'support' ? <AdminSupportRequests token={token} language={language} onPendingCount={setPendingRequestCount} /> : kind === 'exams' ? <>
+    {kind === 'resources' ? <><div className="exam-admin-guidance"><p>{copy('resourceWorkflow')}</p></div><AdminResourcesPage token={token} language={language} entryLanguage={entryLanguage} subjects={subjects} onChanged={onChanged} initialCategory={resourceUploadCategory} /></> : kind === 'support' ? <AdminSupportRequests token={token} language={language} onPendingCount={setPendingRequestCount} /> : kind === 'openResponses' ? <AdminOpenResponses token={token} language={language} onGraded={async () => { await reload(); onChanged() }} /> : kind === 'exams' ? <>
       {error && <div className="notice notice-error" role="alert">{error}</div>}
       <div className="exam-admin-guidance"><div className="exam-admin-guidance-heading"><b>{copy('examWorkflowTitle')}</b><button className="button button-outline button-small" onClick={() => { setResourceUploadCategory('exams'); setKind('resources') }}><Upload size={14} />{copy('uploadExamPaper')}</button></div><p>{copy('examWorkflow')}</p></div>
       <div className="admin-layout">
@@ -921,10 +944,12 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
               <label className="field-label">{copy('mediaLink')}<input type="url" value={form.media_url || ''} onChange={(event) => setForm({ ...form, media_url: event.target.value })} placeholder="https://" /></label>
             </> : <>
               <TranslationFields label={copy('questionPrompt')} field="prompt" value={form.prompt} language={entryLanguage} onChange={changeTranslation} />
-              {['A', 'B', 'C', 'D'].map((option) => <TranslationFields key={option} label={`${copy('choice')} ${option}`} field="options" option={option} value={form.options?.[option] || emptyTranslations()} language={entryLanguage} onChange={changeTranslation} />)}
-              <label className="field-label">{copy('correctAnswer')}<select value={form.answer || 'A'} onChange={(event) => setForm({ ...form, answer: event.target.value })}>{['A', 'B', 'C', 'D'].map((answer) => <option key={answer}>{answer}</option>)}</select></label>
+              {form.question_type === 'exam' && <label className="field-label">{copy('questionFormat')}<select value={form.answer_type || 'multiple_choice'} onChange={(event) => setForm({ ...form, answer_type: event.target.value })}><option value="multiple_choice">{copy('multipleChoice')}</option><option value="open">{copy('openQuestion')}</option></select></label>}
+              {form.answer_type === 'open' && form.question_type === 'exam' ? <><TranslationFields label={copy('modelAnswer')} field="model_answer" value={form.model_answer || emptyTranslations()} language={entryLanguage} onChange={changeTranslation} multiline /><small className="resource-hint">{copy('modelAnswerHelp')}</small></>
+                : <>{['A', 'B', 'C', 'D'].map((option) => <TranslationFields key={option} label={`${copy('choice')} ${option}`} field="options" option={option} value={form.options?.[option] || emptyTranslations()} language={entryLanguage} onChange={changeTranslation} />)}
+                  <label className="field-label">{copy('correctAnswer')}<select value={form.answer || 'A'} onChange={(event) => setForm({ ...form, answer: event.target.value })}>{['A', 'B', 'C', 'D'].map((answer) => <option key={answer}>{answer}</option>)}</select></label></>}
               <TranslationFields label={copy('explanation')} field="explanation" value={form.explanation} language={entryLanguage} onChange={changeTranslation} multiline />
-              <label className="field-label">{copy('questionType')}<select value={form.question_type || 'exercise'} onChange={(event) => setForm({ ...form, question_type: event.target.value })}><option value="exercise">{copy('practice')}</option><option value="exam">{copy('exams')}</option></select></label>
+              <label className="field-label">{copy('questionType')}<select value={form.question_type || 'exercise'} onChange={(event) => setForm({ ...form, question_type: event.target.value, answer_type: event.target.value === 'exercise' ? 'multiple_choice' : form.answer_type || 'multiple_choice' })}><option value="exercise">{copy('practice')}</option><option value="exam">{copy('exams')}</option></select></label>
               {form.question_type === 'exam' && <label className="field-label">{copy('exams')}<select required value={form.exam_id || ''} onChange={(event) => setForm({ ...form, exam_id: event.target.value })}><option value="" disabled>{copy('selectExam')}</option>{managedExams.map((item) => <option value={item.id} key={item.id}>{text(item.title, language)}{!item.published ? ` · ${copy('draft')}` : ''}</option>)}</select></label>}
             </>}
             <button className="button button-primary button-wide" disabled={busy || !topics.length}>{busy ? '…' : copy('save')}<Check size={15} /></button>
@@ -933,6 +958,62 @@ function AdminPage({ subjects, exams, token, language, onChanged }) {
       </div>
     </>}
   </>
+}
+
+function AdminOpenResponses({ token, language, onGraded }) {
+  const [responses, setResponses] = useState([])
+  const [feedback, setFeedback] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+
+  const reload = useCallback(async () => {
+    const data = await api('/admin/open-responses', { token })
+    setResponses(data.responses)
+  }, [token])
+
+  useEffect(() => {
+    reload().catch((loadError) => setError(loadError.message)).finally(() => setLoading(false))
+  }, [reload])
+
+  async function grade(response, correct) {
+    const key = `${response.attemptId}:${response.questionId}`
+    setBusy(key)
+    setError('')
+    try {
+      await api(`/admin/exam-attempts/${response.attemptId}/grade`, {
+        token,
+        method: 'POST',
+        body: JSON.stringify({ questionId: response.questionId, correct, feedback: feedback[key] || '' }),
+      })
+      await reload()
+      await onGraded()
+    } catch (gradeError) {
+      setError(gradeError.message)
+    } finally {
+      setBusy('')
+    }
+  }
+
+  return <section className="panel open-response-panel">
+    <div className="panel-heading"><div><span className="section-kicker">{t(language, 'teachingToolkit')}</span><h2>{t(language, 'openResponses')}</h2></div><span className="panel-count">{responses.length}</span></div>
+    {error && <div className="notice notice-error" role="alert">{error}</div>}
+    {loading ? <div className="empty-message">{t(language, 'loading')}</div> : responses.length ? responses.map((response) => {
+      const key = `${response.attemptId}:${response.questionId}`
+      return <article className="open-response-card" key={key}>
+        <div className="open-response-meta"><b>{response.studentName || response.studentEmail}</b><span>{response.examTitle}</span><small>{new Intl.DateTimeFormat(language, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(response.submittedAt))}</small></div>
+        <h3>{response.prompt}</h3>
+        <div className="open-response-answer"><b>{t(language, 'studentAnswer')}</b><p>{response.selected || t(language, 'noAnswerProvided')}</p></div>
+        <div className="open-response-answer"><b>{t(language, 'modelAnswer')}</b><p>{response.modelAnswer}</p></div>
+        {response.explanation && <p className="open-response-explanation">{response.explanation}</p>}
+        <label className="field-label">{t(language, 'gradingFeedback')}<textarea rows={2} maxLength={1000} value={feedback[key] || ''} onChange={(event) => setFeedback((current) => ({ ...current, [key]: event.target.value }))} /></label>
+        <div className="open-response-actions">
+          <button className="button button-primary button-small" disabled={Boolean(busy)} onClick={() => grade(response, true)}>{busy === key ? '…' : t(language, 'markCorrect')}</button>
+          <button className="button button-outline button-small" disabled={Boolean(busy)} onClick={() => grade(response, false)}>{busy === key ? '…' : t(language, 'markIncorrect')}</button>
+        </div>
+      </article>
+    }) : <div className="empty-message">{t(language, 'noOpenResponses')}</div>}
+  </section>
 }
 
 function TranslationFields({ label, field, option, value, language, onChange, multiline = false }) {

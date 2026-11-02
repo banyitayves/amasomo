@@ -365,6 +365,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .exam-csv-import > p { margin: 0; color: #819087; font-size: 9px; line-height: 1.6; }
 .exam-csv-template { display: inline-flex; width: fit-content; align-items: center; gap: 6px; color: #326447; font-size: 9px; font-weight: 700; text-decoration: none; }
 .exam-csv-template:hover { text-decoration: underline; }
+.open-response-panel { display: grid; gap: 12px; }
+.open-response-card { display: grid; gap: 10px; padding: 14px; border: 1px solid #e6ebe4; border-radius: 11px; background: #fff; }
+.open-response-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #819087; font-size: 9px; }
+.open-response-meta b { color: #435d4a; }
+.open-response-card h3 { margin: 0; color: #35463a; font-size: 12px; line-height: 1.6; }
+.open-response-answer { padding: 10px; border-radius: 8px; background: #f7f9f6; }
+.open-response-answer b { color: #56665b; font-size: 9px; }
+.open-response-answer p, .open-response-explanation { margin: 5px 0 0; color: #617066; font-size: 10px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.open-response-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.exam-open-answer textarea { width: 100%; min-height: 110px; padding: 10px; border: 1px solid #e3e9e1; border-radius: 9px; color: #35443a; background: #fff; font: inherit; font-size: 11px; resize: vertical; }
+.exam-provisional-note, .exam-pending-grade { color: #816a3f; font-size: 10px; line-height: 1.6; }
 .exam-admin-row { display: flex; align-items: center; justify-content: space-between; gap: 11px; padding: 11px 0; border-top: 1px solid #edf0ec; }
 .exam-admin-copy { display: grid; min-width: 0; gap: 4px; }
 .exam-admin-copy > b { color: #47574b; font-size: 10px; }
@@ -432,6 +443,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .brand-mobile { display: flex; }
   .brand-mobile .brand-logo { width: 68px; height: 45px; }
   .auth-card { max-width: 430px; padding: 35px 0; }
+  .attempt-row { flex-wrap: wrap; }
+  .attempt-row .button { margin-left: auto; }
   .auth-mobile-greeting { display: block; margin-bottom: 15px; }
   .auth-heading h2 { font-size: 25px; }
   .auth-bottom { margin-top: auto; }

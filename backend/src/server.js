@@ -472,7 +472,10 @@ app.get('/api/exams/:examId', async (req, res) => {
       id: question.id,
       topic_id: question.topic_id,
       prompt: localized(question.prompt, language),
-      options: Object.fromEntries(Object.entries(question.options || {}).map(([key, value]) => [key, localized(value, language)])),
+      answerType: question.options?._answer_type === 'open' ? 'open' : 'multiple_choice',
+      options: question.options?._answer_type === 'open'
+        ? {}
+        : Object.fromEntries(Object.entries(question.options || {}).map(([key, value]) => [key, localized(value, language)])),
     }))
   res.json({
     exam: { id: exam.id, title: localized(exam.title, language), description: localized(exam.description, language), duration_minutes: exam.duration_minutes },
@@ -491,20 +494,39 @@ app.post('/api/exams/:examId/submit', async (req, res) => {
   if (!ordered.length) return res.status(400).json({ error: 'This exam has no questions yet.' })
   const answers = req.body.answers && typeof req.body.answers === 'object' ? req.body.answers : {}
   const review = ordered.map(({ questions: question }) => {
-    const selected = typeof answers[question.id] === 'string' ? answers[question.id] : ''
+    const answerType = question.options?._answer_type === 'open' ? 'open' : 'multiple_choice'
+    const rawSelected = typeof answers[question.id] === 'string' ? answers[question.id] : ''
+    const selected = answerType === 'open' ? rawSelected.slice(0, 5000).trim() : rawSelected
+    if (answerType === 'open') {
+      return {
+        questionId: question.id,
+        topicId: question.topic_id,
+        topicTitle: localized(question.topics?.title, language),
+        prompt: localized(question.prompt, language),
+        answerType,
+        selected,
+        modelAnswer: localized(question.options?._model_answer, language),
+        correct: null,
+        gradingStatus: 'pending',
+        explanation: localized(question.explanation, language),
+      }
+    }
     return {
       questionId: question.id,
       topicId: question.topic_id,
       topicTitle: localized(question.topics?.title, language),
       prompt: localized(question.prompt, language),
+      answerType,
       selected,
       correctAnswer: question.answer,
       correctLabel: localized(question.options?.[question.answer], language),
+      selectedLabel: localized(question.options?.[selected], language),
       correct: selected === question.answer,
       explanation: localized(question.explanation, language),
     }
   })
-  const score = review.filter((entry) => entry.correct).length
+  const score = review.filter((entry) => entry.answerType !== 'open' && entry.correct).length
+  const pendingOpenAnswers = review.filter((entry) => entry.answerType === 'open').length
   const attempt = await run(supabase.from('exam_attempts').insert({
     user_id: req.user.id,
     exam_id: exam.id,
@@ -513,7 +535,7 @@ app.post('/api/exams/:examId/submit', async (req, res) => {
     score_percent: Math.round(score * 100 / review.length),
     review,
   }).select('id').single())
-  await Promise.all(review.map((entry) => run(supabase.rpc('record_learning_question_attempt', {
+  await Promise.all(review.filter((entry) => entry.answerType !== 'open').map((entry) => run(supabase.rpc('record_learning_question_attempt', {
     p_user_id: req.user.id, p_question_id: entry.questionId, p_correct: entry.correct,
   }))))
   res.json({
@@ -522,8 +544,86 @@ app.post('/api/exams/:examId/submit', async (req, res) => {
     total: review.length,
     percent: Math.round(score * 100 / review.length),
     title: localized(exam.title, language),
+    pendingOpenAnswers,
     review,
   })
+})
+
+app.get('/api/exam-attempts/:attemptId', async (req, res) => {
+  const attempt = await run(supabase.from('exam_attempts')
+    .select('id,score,total_questions,score_percent,review,created_at,exams(title)')
+    .eq('id', req.params.attemptId).eq('user_id', req.user.id).maybeSingle())
+  if (!attempt) return res.status(404).json({ error: 'Exam result not found.' })
+  const language = ['rw', 'en', 'sw', 'fr'].includes(req.query.lang) ? req.query.lang : 'en'
+  const review = Array.isArray(attempt.review) ? attempt.review : []
+  res.json({ attempt: {
+    attemptId: attempt.id,
+    score: attempt.score,
+    total: attempt.total_questions,
+    percent: attempt.score_percent,
+    title: localized(attempt.exams?.title, language),
+    pendingOpenAnswers: review.filter((answer) => answer.answerType === 'open' && answer.gradingStatus !== 'graded').length,
+    review,
+  } })
+})
+
+app.get('/api/admin/open-responses', requireAdmin, async (_req, res) => {
+  const attempts = await run(supabase.from('exam_attempts')
+    .select('id,user_id,score,total_questions,created_at,review,exams(title)')
+    .contains('review', [{ answerType: 'open', gradingStatus: 'pending' }])
+    .order('created_at', { ascending: true })
+    .limit(200))
+  const userIds = [...new Set(attempts.map((attempt) => attempt.user_id))]
+  const users = await Promise.all(userIds.map(async (userId) => {
+    const { data, error } = await supabase.auth.admin.getUserById(userId)
+    if (error) throw error
+    return [userId, data.user]
+  }))
+  const usersById = new Map(users)
+  res.json({
+    responses: attempts.flatMap((attempt) => (attempt.review || [])
+      .filter((answer) => answer.answerType === 'open' && answer.gradingStatus === 'pending')
+      .map((answer) => ({
+        attemptId: attempt.id,
+        questionId: answer.questionId,
+        studentEmail: usersById.get(attempt.user_id)?.email || '',
+        studentName: usersById.get(attempt.user_id)?.user_metadata?.display_name || '',
+        examTitle: localized(attempt.exams?.title, 'en'),
+        submittedAt: attempt.created_at,
+        prompt: answer.prompt,
+        selected: answer.selected,
+        modelAnswer: answer.modelAnswer,
+        explanation: answer.explanation,
+      }))),
+  })
+})
+
+app.post('/api/admin/exam-attempts/:attemptId/grade', requireAdmin, async (req, res) => {
+  if (typeof req.body.correct !== 'boolean') fail(400, 'Choose whether the response is correct.')
+  const questionId = requireText(req.body.questionId, 'Question ID', 100)
+  const feedback = req.body.feedback === undefined ? '' : req.body.feedback
+  if (typeof feedback !== 'string' || feedback.length > 1000) fail(400, 'Feedback must be under 1000 characters.')
+  const attempt = await run(supabase.from('exam_attempts')
+    .select('id,score,total_questions,review')
+    .eq('id', req.params.attemptId).maybeSingle())
+  if (!attempt) return res.status(404).json({ error: 'Exam result not found.' })
+  const review = Array.isArray(attempt.review) ? attempt.review : []
+  const answer = review.find((entry) => entry.questionId === questionId && entry.answerType === 'open')
+  if (!answer) return res.status(404).json({ error: 'Open response not found.' })
+  if (answer.gradingStatus === 'graded') fail(409, 'This response has already been graded.')
+  Object.assign(answer, {
+    correct: req.body.correct,
+    gradingStatus: 'graded',
+    gradingFeedback: feedback.trim(),
+    gradedAt: new Date().toISOString(),
+  })
+  const score = review.filter((entry) => entry.answerType !== 'open' ? entry.correct : entry.gradingStatus === 'graded' && entry.correct).length
+  const updated = await run(supabase.from('exam_attempts').update({
+    score,
+    score_percent: Math.round(score * 100 / attempt.total_questions),
+    review,
+  }).eq('id', attempt.id).select('score,score_percent').single())
+  res.json({ score: updated.score, percent: updated.score_percent })
 })
 
 app.get('/api/progress', async (req, res) => {
@@ -550,6 +650,7 @@ app.get('/api/progress', async (req, res) => {
   const topicStats = new Map()
   for (const attempt of attempts) {
     for (const answer of attempt.review || []) {
+      if (answer.answerType === 'open' && answer.gradingStatus !== 'graded') continue
       const current = topicStats.get(answer.topicId) || { topicId: answer.topicId, title: answer.topicTitle, total: 0, correct: 0 }
       current.total += 1
       if (answer.correct) current.correct += 1
@@ -561,6 +662,8 @@ app.get('/api/progress', async (req, res) => {
     .sort((a, b) => a.correct / a.total - b.correct / b.total)
     .slice(0, 4)
     .map((topic) => ({ ...topic, title: localized(topic.title, req.query.lang || 'en') }))
+  const completedAttempts = attempts.filter((attempt) =>
+    !(attempt.review || []).some((answer) => answer.answerType === 'open' && answer.gradingStatus !== 'graded'))
   res.json({
     completedLessons: completions.length,
     subjectProgress: [...subjectProgress.values()],
@@ -571,8 +674,9 @@ app.get('/api/progress', async (req, res) => {
       percent: attempt.score_percent,
       created_at: attempt.created_at,
       title: localized(attempt.exams?.title, req.query.lang || 'en'),
+      pendingOpenAnswers: (attempt.review || []).filter((answer) => answer.answerType === 'open' && answer.gradingStatus !== 'graded').length,
     })),
-    average: attempts.length ? Math.round(attempts.reduce((sum, attempt) => sum + attempt.score_percent, 0) / attempts.length) : 0,
+    average: completedAttempts.length ? Math.round(completedAttempts.reduce((sum, attempt) => sum + attempt.score_percent, 0) / completedAttempts.length) : 0,
     weakAreas,
   })
 })
@@ -696,11 +800,25 @@ app.get('/api/admin/questions', requireAdmin, async (_req, res) => {
 })
 
 app.post('/api/admin/questions', requireAdmin, async (req, res) => {
-  const answer = requireText(req.body.answer, 'Correct answer', 1).toUpperCase()
-  if (!['A', 'B', 'C', 'D'].includes(answer)) fail(400, 'Correct answer must be A, B, C, or D.')
-  if (!req.body.options || !['A', 'B', 'C', 'D'].every((key) => req.body.options[key])) fail(400, 'Provide four answer choices.')
-  for (const key of ['A', 'B', 'C', 'D']) requireTranslations(req.body.options[key], `Choice ${key}`, 255)
   const type = req.body.question_type === 'exam' ? 'exam' : 'exercise'
+  if (req.body.answer_type !== undefined && !['multiple_choice', 'open'].includes(req.body.answer_type)) {
+    fail(400, 'Choose multiple choice or open question format.')
+  }
+  if (req.body.answer_type === 'open' && type !== 'exam') fail(400, 'Open questions can only be part of an exam.')
+  const answerType = req.body.answer_type === 'open' ? 'open' : 'multiple_choice'
+  const answer = answerType === 'open' ? 'A' : requireText(req.body.answer, 'Correct answer', 1).toUpperCase()
+  if (!['A', 'B', 'C', 'D'].includes(answer)) fail(400, 'Correct answer must be A, B, C, or D.')
+  let options = {}
+  if (answerType === 'open') {
+    options = {
+      _answer_type: 'open',
+      _model_answer: requireTranslations(req.body.model_answer, 'Model answer', 2000),
+    }
+  } else {
+    if (!req.body.options || !['A', 'B', 'C', 'D'].every((key) => req.body.options[key])) fail(400, 'Provide four answer choices.')
+    for (const key of ['A', 'B', 'C', 'D']) requireTranslations(req.body.options[key], `Choice ${key}`, 255)
+    options = req.body.options
+  }
   let examId = ''
   if (type === 'exam') {
     examId = requireText(req.body.exam_id, 'Exam')
@@ -711,7 +829,7 @@ app.post('/api/admin/questions', requireAdmin, async (req, res) => {
     topic_id: requireText(req.body.topic_id, 'Topic'),
     question_type: type,
     prompt: requireTranslations(req.body.prompt, 'Question', 500),
-    options: req.body.options,
+    options,
     answer,
     explanation: requireTranslations(req.body.explanation, 'Explanation', 1000),
   }).select().single())
@@ -738,19 +856,28 @@ app.post('/api/admin/exams/:id/questions/import', requireAdmin, async (req, res)
 
   const questions = inputQuestions.map((input, index) => {
     if (!input || typeof input !== 'object' || Array.isArray(input)) fail(400, `Question ${index + 1} is invalid.`)
-    const answer = requireText(input.answer, `Question ${index + 1} answer`, 1).toUpperCase()
-    if (!['A', 'B', 'C', 'D'].includes(answer)) fail(400, `Question ${index + 1} answer must be A, B, C, or D.`)
-    const options = input.options
-    if (!options || typeof options !== 'object' || Array.isArray(options)) fail(400, `Question ${index + 1} must have four choices.`)
-    const translations = {}
-    for (const key of ['A', 'B', 'C', 'D']) {
-      translations[key] = requireTranslations({ [language]: options[key] }, `Question ${index + 1} choice ${key}`, 255)
+    const answerType = input.answer_type === 'open' ? 'open' : input.answer_type === 'multiple_choice' ? 'multiple_choice' : ''
+    if (!answerType) fail(400, `Question ${index + 1} must be multiple_choice or open.`)
+    let answer = 'A'
+    let options = {}
+    if (answerType === 'multiple_choice') {
+      answer = requireText(input.answer, `Question ${index + 1} answer`, 1).toUpperCase()
+      if (!['A', 'B', 'C', 'D'].includes(answer)) fail(400, `Question ${index + 1} answer must be A, B, C, or D.`)
+      if (!input.options || typeof input.options !== 'object' || Array.isArray(input.options)) fail(400, `Question ${index + 1} must have four choices.`)
+      for (const key of ['A', 'B', 'C', 'D']) {
+        options[key] = requireTranslations(input.options[key], `Question ${index + 1} choice ${key}`, 255)
+      }
+    } else {
+      options = {
+        _answer_type: 'open',
+        _model_answer: requireTranslations(input.model_answer, `Question ${index + 1} model answer`, 2000),
+      }
     }
     return {
       topic_id: topicId,
       question_type: 'exam',
       prompt: requireTranslations({ [language]: input.prompt }, `Question ${index + 1}`, 500),
-      options: translations,
+      options,
       answer,
       explanation: requireTranslations({ [language]: input.explanation }, `Question ${index + 1} explanation`, 1000),
     }
@@ -785,9 +912,24 @@ app.put('/api/admin/questions/:id', requireAdmin, async (req, res) => {
     if (!['exercise', 'exam'].includes(req.body.question_type)) fail(400, 'Choose exercise or exam for the question type.')
     changes.question_type = req.body.question_type
   }
+  let answerType
+  if (req.body.answer_type !== undefined) {
+    answerType = req.body.answer_type === 'open' ? 'open' : req.body.answer_type === 'multiple_choice' ? 'multiple_choice' : ''
+    if (!answerType) fail(400, 'Choose multiple choice or open question format.')
+    if (answerType === 'open') {
+      const current = await run(supabase.from('questions').select('question_type').eq('id', req.params.id).maybeSingle())
+      if ((changes.question_type || current?.question_type) !== 'exam') fail(400, 'Open questions can only be part of an exam.')
+    }
+  }
   if (req.body.prompt) changes.prompt = requireTranslations(req.body.prompt, 'Question', 500)
-  if (req.body.options) changes.options = req.body.options
-  if (changes.options) {
+  if (answerType === 'open') {
+    changes.options = {
+      _answer_type: 'open',
+      _model_answer: requireTranslations(req.body.model_answer, 'Model answer', 2000),
+    }
+    changes.answer = 'A'
+  } else if (req.body.options) changes.options = req.body.options
+  if (changes.options && changes.options._answer_type !== 'open') {
     for (const key of ['A', 'B', 'C', 'D']) requireTranslations(changes.options[key], `Choice ${key}`, 255)
   }
   if (req.body.explanation) changes.explanation = requireTranslations(req.body.explanation, 'Explanation', 1000)

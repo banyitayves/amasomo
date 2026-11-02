@@ -1,4 +1,4 @@
-const examCsvHeaders = ['prompt', 'option_a', 'option_b', 'option_c', 'option_d', 'answer', 'explanation']
+const examCsvHeaders = ['question_type', 'prompt', 'option_a', 'option_b', 'option_c', 'option_d', 'answer', 'model_answer', 'explanation']
 
 function parseRows(source) {
   const rows = []
@@ -65,7 +65,9 @@ export function parseExamCsv(source) {
     const rowNumber = index + 2
     if (cells.length !== headers.length) throw new Error(`CSV row ${rowNumber} has a different number of columns than the header.`)
     const value = (header) => cells[positions[header]].trim()
+    const questionType = value('question_type').toLowerCase()
     const question = {
+      answerType: questionType,
       prompt: value('prompt'),
       options: {
         A: value('option_a'),
@@ -74,13 +76,25 @@ export function parseExamCsv(source) {
         D: value('option_d'),
       },
       answer: value('answer').toUpperCase(),
+      modelAnswer: value('model_answer'),
       explanation: value('explanation'),
     }
-    if (!question.prompt || Object.values(question.options).some((option) => !option) || !question.explanation) {
-      throw new Error(`CSV row ${rowNumber} must include a question, four choices, and an explanation.`)
+    if (!['multiple_choice', 'open'].includes(questionType)) {
+      throw new Error(`CSV row ${rowNumber} question_type must be multiple_choice or open.`)
     }
-    if (!['A', 'B', 'C', 'D'].includes(question.answer)) {
-      throw new Error(`CSV row ${rowNumber} answer must be A, B, C, or D.`)
+    if (!question.prompt || !question.explanation) {
+      throw new Error(`CSV row ${rowNumber} must include a question and explanation.`)
+    }
+    if (questionType === 'multiple_choice') {
+      if (Object.values(question.options).some((option) => !option)) {
+        throw new Error(`CSV row ${rowNumber} must include four choices.`)
+      }
+      if (!['A', 'B', 'C', 'D'].includes(question.answer)) {
+        throw new Error(`CSV row ${rowNumber} answer must be A, B, C, or D.`)
+      }
+    } else {
+      if (!question.modelAnswer) throw new Error(`CSV row ${rowNumber} open question must include a model_answer.`)
+      question.answer = ''
     }
     return question
   })
